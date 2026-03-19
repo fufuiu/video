@@ -35,6 +35,25 @@
               </template>
             </el-input>
           </el-form-item>
+
+          <!-- 图片验证码 -->
+          <el-form-item v-if="captchaData.show" class="animate__animated animate__fadeInUp" style="animation-delay: 0.25s">
+            <div class="captcha-wrapper">
+              <el-input 
+                v-model="loginForm.captcha_value" 
+                placeholder="验证码"
+                class="captcha-input"
+              >
+                <template #prefix>
+                  <el-icon><Key /></el-icon>
+                </template>
+              </el-input>
+              <div class="captcha-img-box" @click="refreshCaptcha">
+                <img :src="captchaData.imageUrl" alt="验证码" title="点击刷新" />
+              </div>
+            </div>
+          </el-form-item>
+
           <el-form-item class="animate__animated" :class="{'animate__fadeInUp': !isRegisterActive, 'animate__fadeOutUp': isRegisterActive}" :style="{'animation-delay': '0.3s'}">
             <el-button type="primary" round @click="submitLoginForm" :loading="loading.login">登录</el-button>
           </el-form-item>
@@ -98,6 +117,25 @@
               </template>
             </el-input>
           </el-form-item>
+
+          <!-- 图片验证码（注册必填） -->
+          <el-form-item prop="captcha_value" class="animate__animated" :class="{'animate__fadeInUp': isRegisterActive, 'animate__fadeOutUp': !isRegisterActive}" :style="{'animation-delay': '0.45s'}">
+            <div class="captcha-wrapper">
+              <el-input 
+                v-model="registerForm.captcha_value" 
+                placeholder="验证码"
+                class="captcha-input"
+              >
+                <template #prefix>
+                  <el-icon><Key /></el-icon>
+                </template>
+              </el-input>
+              <div class="captcha-img-box" @click="refreshRegisterCaptcha">
+                <img :src="registerCaptcha.imageUrl" alt="验证码" title="点击刷新" />
+              </div>
+            </div>
+          </el-form-item>
+
           <el-form-item class="animate__animated" :class="{'animate__fadeInUp': isRegisterActive, 'animate__fadeOutUp': !isRegisterActive}" :style="{'animation-delay': '0.5s'}">
             <el-button type="primary" round @click="submitRegisterForm" :loading="loading.register">注册</el-button>
           </el-form-item>
@@ -145,6 +183,22 @@
               >
                 {{ sendCodeButtonText }}
               </el-button>
+            </div>
+          </el-form-item>
+          <el-form-item prop="captcha_value" class="animate__animated" :class="{'animate__fadeInUp': isForgotPasswordActive, 'animate__fadeOutUp': !isForgotPasswordActive}" :style="{'animation-delay': '0.25s'}">
+            <div class="captcha-wrapper">
+              <el-input 
+                v-model="forgotPasswordForm.captcha_value" 
+                placeholder="图片验证码"
+                class="captcha-input"
+              >
+                <template #prefix>
+                  <el-icon><Key /></el-icon>
+                </template>
+              </el-input>
+              <div class="captcha-img-box" @click="refreshForgotCaptcha">
+                <img :src="forgotCaptcha.imageUrl" alt="验证码" title="点击刷新" />
+              </div>
             </div>
           </el-form-item>
           <el-form-item prop="newPassword" class="animate__animated" :class="{'animate__fadeInUp': isForgotPasswordActive, 'animate__fadeOutUp': !isForgotPasswordActive}" :style="{'animation-delay': '0.3s'}">
@@ -238,7 +292,7 @@
 <script setup>
 import { ref, reactive, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { login, register, getUserInfo, sendVerificationCode, changePasswordWithCode } from '@/api/user';
+import { login, register, getUserInfo, sendVerificationCode, changePasswordWithCode, getCaptcha } from '@/api/user';
 import { setToken, setRefreshToken, removeToken } from '@/utils/auth';
 import { ElMessage } from 'element-plus';
 import { User, Lock, Message, VideoPlay, Film, ArrowRight, ArrowLeft, Key } from '@element-plus/icons-vue';
@@ -268,10 +322,22 @@ const loading = reactive({
   forgotPassword: false
 });
 
+// 注册表单
+const registerForm = reactive({
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  captcha_key: '',
+  captcha_value: ''
+});
+
 // 忘记密码表单
 const forgotPasswordForm = reactive({
   contact: '',
   code: '',
+  captcha_key: '',
+  captcha_value: '',
   newPassword: '',
   confirmNewPassword: ''
 });
@@ -283,6 +349,9 @@ const forgotPasswordRules = {
   ],
   code: [
     { required: true, message: '请输入验证码', trigger: 'blur' }
+  ],
+  captcha_value: [
+    { required: true, message: '请输入图片验证码', trigger: 'blur' }
   ],
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
@@ -303,102 +372,63 @@ const forgotPasswordRules = {
   ]
 };
 
-// 打开忘记密码表单
-const openForgotPasswordDialog = () => {
-  isForgotPasswordActive.value = true;
-  isRegisterActive.value = false;
-};
-
-// 返回登录
-const backToLogin = () => {
-  isForgotPasswordActive.value = false;
-  if (forgotPasswordFormRef.value) {
-    forgotPasswordFormRef.value.resetFields();
-  }
-  clearInterval(countdownTimer);
-  sendCodeButtonText.value = '发送验证码';
-  isSendingCode.value = false;
-};
-
-// 发送验证码
-const handleSendVerificationCode = async () => {
-  if (!forgotPasswordForm.contact) {
-    ElMessage.warning('请输入邮箱或手机号');
-    return;
-  }
-
-  isSendingCode.value = true;
-  sendCodeButtonText.value = '发送中...';
-
-  try {
-    await sendVerificationCode({ contact: forgotPasswordForm.contact, usage: 'reset_password' });
-    ElMessage.success('验证码已发送，请注意查收');
-
-    let countdown = 60;
-    sendCodeButtonText.value = `${countdown}秒后重试`;
-    countdownTimer = setInterval(() => {
-      countdown--;
-      if (countdown > 0) {
-        sendCodeButtonText.value = `${countdown}秒后重试`;
-      } else {
-        clearInterval(countdownTimer);
-        sendCodeButtonText.value = '发送验证码';
-        isSendingCode.value = false;
-      }
-    }, 1000);
-
-  } catch (error) {
-    ElMessage.error('验证码发送失败，请稍后再试');
-    sendCodeButtonText.value = '发送验证码';
-    isSendingCode.value = false;
-  }
-};
-
-// 处理忘记密码
-const handleForgotPassword = () => {
-  forgotPasswordFormRef.value.validate(async (valid) => {
-    if (valid) {
-      loading.forgotPassword = true;
-      try {
-        await changePasswordWithCode({
-          contact: forgotPasswordForm.contact,
-          code: forgotPasswordForm.code,
-          new_password: forgotPasswordForm.newPassword
-        });
-        ElMessage.success('密码重置成功，请使用新密码登录');
-        backToLogin();
-      } catch (error) {
-        ElMessage.error('密码重置失败，请稍后再试');
-      } finally {
-        loading.forgotPassword = false;
-      }
-    }
-  });
-};
-
 // 登录表单数据
 const loginForm = reactive({
   username: '',
-  password: ''
-});
-
-// 注册表单数据
-const registerForm = reactive({
-  username: '',
-  email: '',
   password: '',
-  confirmPassword: ''
+  captcha_key: '',
+  captcha_value: ''
 });
 
-// 登录表单验证规则
-const loginRules = {
-  username: [
-    { required: true, message: '请输入用户名或邮箱', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能小于6个字符', trigger: 'blur' }
-  ]
+// 验证码相关
+const captchaData = reactive({
+  show: false,
+  imageUrl: '',
+  hashkey: ''
+});
+
+const refreshCaptcha = async () => {
+  try {
+    const res = await getCaptcha();
+    captchaData.imageUrl = res.image_url;
+    captchaData.hashkey = res.hashkey;
+  } catch (error) {
+    console.error('Failed to get captcha:', error);
+  }
+};
+
+// 注册验证码相关
+const registerCaptcha = reactive({
+  imageUrl: '',
+  hashkey: ''
+});
+
+const refreshRegisterCaptcha = async () => {
+  try {
+    const res = await getCaptcha();
+    registerCaptcha.imageUrl = res.image_url;
+    registerCaptcha.hashkey = res.hashkey;
+    registerForm.captcha_key = res.hashkey;
+  } catch (error) {
+    console.error('Failed to get register captcha:', error);
+  }
+};
+
+// 忘记密码验证码相关
+const forgotCaptcha = reactive({
+  imageUrl: '',
+  hashkey: ''
+});
+
+const refreshForgotCaptcha = async () => {
+  try {
+    const res = await getCaptcha();
+    forgotCaptcha.imageUrl = res.image_url;
+    forgotCaptcha.hashkey = res.hashkey;
+    forgotPasswordForm.captcha_key = res.hashkey;
+  } catch (error) {
+    console.error('Failed to get forgot captcha:', error);
+  }
 };
 
 // 注册表单验证规则
@@ -411,6 +441,9 @@ const registerRules = {
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
     { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
   ],
+  captcha_value: [
+    { required: true, message: '请输入验证码', trigger: 'blur' }
+  ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 8, message: '密码长度不能小于8个字符', trigger: 'blur' },
@@ -421,7 +454,6 @@ const registerRules = {
           // 纯数字密码
           if (/^\d+$/.test(value)) {
             callback(new Error('密码不能仅包含数字'));
-            return;
           }
           
           // 常见密码检查（简单示例）
@@ -468,15 +500,19 @@ const initFormMode = () => {
   const urlParams = new URLSearchParams(window.location.search);
   const mode = urlParams.get('mode');
   isRegisterActive.value = mode === 'register';
+  if (isRegisterActive.value) {
+    refreshRegisterCaptcha();
+  }
 };
 
-// 监听路由变化
-// watch(
-//   () => route.query.mode,
-//   (newMode) => {
-//     isRegisterActive.value = newMode === 'register';
-//   }
-// );
+// 初始化时检查是否有保存的用户名
+const initSavedUsername = () => {
+  const savedUsername = localStorage.getItem('remember_username');
+  if (savedUsername) {
+    loginForm.username = savedUsername;
+    rememberMe.value = true;
+  }
+};
 
 // 切换表单
 const toggleForm = () => {
@@ -488,6 +524,10 @@ const toggleForm = () => {
   
   // 切换状态
   isRegisterActive.value = !isRegisterActive.value;
+
+  if (isRegisterActive.value) {
+    refreshRegisterCaptcha();
+  }
   
   // 更新URL，但不触发路由导航
   const newUrl = isRegisterActive.value 
@@ -497,121 +537,90 @@ const toggleForm = () => {
 };
 
 // 提交登录表单
-const submitLoginForm = () => {
-  loginFormRef.value.validate((valid) => {
+const submitLoginForm = async () => {
+  if (!loginFormRef.value) return;
+  
+  loginFormRef.value.validate(async (valid) => {
     if (valid) {
-      handleLogin();
+      try {
+        loading.login = true;
+        const res = await login({
+          username: loginForm.username,
+          password: loginForm.password,
+          captcha_key: captchaData.hashkey,
+          captcha_value: loginForm.captcha_value
+        });
+        
+        // 保存token
+        setToken(res.access);
+        if (res.refresh) {
+          setRefreshToken(res.refresh);
+        }
+        
+        // 记住用户名
+        if (rememberMe.value) {
+          localStorage.setItem('remember_username', loginForm.username);
+        } else {
+          localStorage.removeItem('remember_username');
+        }
+        
+        // 更新用户状态
+        try {
+          const userInfo = await getUserInfo();
+          userStore.loginAction(userInfo);
+        } catch (error) {
+          console.error('Failed to get user info after login:', error);
+          // 如果获取用户信息失败，但登录成功了，可以尝试用基本信息登录
+          userStore.loginAction({ username: loginForm.username });
+        }
+        
+        ElMessage.success('登录成功');
+        
+        // 处理重定向
+        const redirect = route.query.redirect || '/';
+        router.push(redirect);
+      } catch (error) {
+        console.error('Login error:', error);
+        if (error.response?.data) {
+          const errorData = error.response.data;
+          
+          // 检查是否需要验证码
+          if (errorData.require_captcha) {
+            captchaData.show = true;
+            refreshCaptcha();
+            ElMessage.warning('请输入验证码');
+          }
+          // 验证码错误
+          else if (errorData.captcha_value || errorData.captcha_key) {
+            ElMessage.error('验证码错误');
+            loginForm.captcha_value = '';
+            refreshCaptcha();
+          }
+          // 其他错误
+          else if (errorData.detail) {
+            ElMessage.error(errorData.detail);
+          } else {
+            ElMessage.error('登录失败，请检查用户名和密码');
+          }
+        } else {
+          ElMessage.error('登录失败，请检查网络连接');
+        }
+      } finally {
+        loading.login = false;
+      }
     }
   });
 };
 
 // 提交注册表单
-const submitRegisterForm = () => {
-  registerFormRef.value.validate((valid) => {
+const submitRegisterForm = async () => {
+  if (!registerFormRef.value) return;
+  
+  registerFormRef.value.validate(async (valid) => {
     if (valid) {
-      if (!agreeTerms.value) {
-        ElMessage.warning('请同意服务条款和隐私政策');
-        return;
-      }
-      handleRegister();
+      await handleRegister();
     }
   });
-};
-
-// 处理登录
-const handleLogin = async () => {
-  try {
-    loading.login = true;
-    const response = await login({
-      username: loginForm.username,
-      password: loginForm.password
-    });
-    
-    if (!response || !response.access) {
-      ElMessage.error('登录响应缺少访问令牌');
-      console.error('Missing access token in response:', response);
-      return;
-    }
-    
-    // 存储token
-    setToken(response.access);
-    // 存储刷新令牌
-    if (response.refresh) {
-      setRefreshToken(response.refresh);
-    }
-    
-    if (rememberMe.value) {
-      localStorage.setItem('remember_username', loginForm.username);
-    } else {
-      localStorage.removeItem('remember_username');
-    }
-    
-    // 获取用户信息
-    try {
-      const userInfo = await getUserInfo();
-      
-      // 确保用户ID存在
-      if (!userInfo || !userInfo.id) {
-        console.error('User info missing ID:', userInfo);
-        ElMessage.error('获取用户信息失败，请重新登录');
-        return;
-      }
-      
-      // 设置用户信息到store
-      userStore.loginAction(userInfo);
-      
-      // 直接将完整用户信息存储到localStorage
-      localStorage.setItem('user_role', userInfo.role || 'user');
-      
-      ElMessage.success('登录成功');
-      
-      // 如果有重定向URL，则跳转到该URL，否则跳转到首页
-      const urlParams = new URLSearchParams(window.location.search);
-      const redirectUrl = urlParams.get('redirect') || '/';
-      router.push(redirectUrl);
-    } catch (error) {
-      console.error('Failed to get user info:', error);
-      ElMessage.error('获取用户信息失败，请重新登录');
-      // 登录失败，清除token
-      removeToken();
-    }
-  } catch (error) {
-    console.error('Login error:', error);
-    
-    if (error.response && error.response.data) {
-      if (error.response.data.detail) {
-        ElMessage.error(error.response.data.detail);
-      } else if (typeof error.response.data === 'object') {
-        // 处理可能的字段错误
-        const errorMessages = [];
-        for (const key in error.response.data) {
-          if (Array.isArray(error.response.data[key])) {
-            errorMessages.push(...error.response.data[key]);
-          } else {
-            errorMessages.push(error.response.data[key]);
-          }
-        }
-        
-        if (errorMessages.length > 0) {
-          ElMessage({
-            message: errorMessages.join('<br>'),
-            type: 'error',
-            dangerouslyUseHTMLString: true,
-            duration: 5000,
-            showClose: true
-          });
-        } else {
-          ElMessage.error('登录失败，请检查用户名和密码');
-        }
-      } else {
-        ElMessage.error('登录失败，请检查用户名和密码');
-      }
-    } else {
-      ElMessage.error('登录失败，请稍后再试');
-    }
-  } finally {
-    loading.login = false;
-  }
 };
 
 // 处理注册
@@ -622,7 +631,9 @@ const handleRegister = async () => {
       username: registerForm.username,
       email: registerForm.email,
       password: registerForm.password,
-      password2: registerForm.confirmPassword
+      password2: registerForm.confirmPassword,
+      captcha_key: registerCaptcha.hashkey,
+      captcha_value: registerForm.captcha_value
     });
     
     ElMessage.success('注册成功，请登录');
@@ -686,6 +697,20 @@ const handleRegister = async () => {
           showClose: true
         });
       }
+      // 处理验证码错误
+      else if (errorData.captcha_value || errorData.captcha_key) {
+        const captchaError = errorData.captcha_value || errorData.captcha_key;
+        const msg = Array.isArray(captchaError) ? captchaError.join('<br>') : captchaError;
+        ElMessage({
+          message: msg,
+          type: 'error',
+          dangerouslyUseHTMLString: true,
+          duration: 5000,
+          showClose: true
+        });
+        registerForm.captcha_value = '';
+        refreshRegisterCaptcha();
+      }
       // 处理其他错误
       else if (errorData.detail) {
         ElMessage.error(errorData.detail);
@@ -702,13 +727,101 @@ const handleRegister = async () => {
   }
 };
 
-// 初始化时检查是否有保存的用户名
-const initSavedUsername = () => {
-  const savedUsername = localStorage.getItem('remember_username');
-  if (savedUsername) {
-    loginForm.username = savedUsername;
-    rememberMe.value = true;
+// 打开忘记密码对话框
+const openForgotPasswordDialog = () => {
+  isForgotPasswordActive.value = true;
+  refreshForgotCaptcha();
+};
+
+// 返回登录
+const backToLogin = () => {
+  isForgotPasswordActive.value = false;
+  forgotPasswordForm.contact = '';
+  forgotPasswordForm.code = '';
+  forgotPasswordForm.captcha_key = '';
+  forgotPasswordForm.captcha_value = '';
+  forgotPasswordForm.newPassword = '';
+  forgotPasswordForm.confirmNewPassword = '';
+};
+
+// 发送验证码
+const handleSendVerificationCode = async () => {
+  if (!forgotPasswordForm.contact) {
+    ElMessage.warning('请先输入邮箱或手机号');
+    return;
   }
+
+  if (!forgotPasswordForm.captcha_value) {
+    ElMessage.warning('请先输入图片验证码');
+    return;
+  }
+  
+  try {
+    isSendingCode.value = true;
+    await sendVerificationCode({
+      code_type: 'password_reset',
+      captcha_key: forgotCaptcha.hashkey,
+      captcha_value: forgotPasswordForm.captcha_value
+    });
+    ElMessage.success('验证码已发送');
+    
+    // 开始倒计时
+    let countdown = 60;
+    sendCodeButtonText.value = `${countdown}s`;
+    countdownTimer = setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        clearInterval(countdownTimer);
+        sendCodeButtonText.value = '发送验证码';
+        isSendingCode.value = false;
+      } else {
+        sendCodeButtonText.value = `${countdown}s`;
+      }
+    }, 1000);
+  } catch (error) {
+    console.error('Failed to send verification code:', error);
+    if (error.response?.data?.captcha_value || error.response?.data?.captcha_key) {
+      ElMessage.error('图片验证码错误或已过期');
+      forgotPasswordForm.captcha_value = '';
+      refreshForgotCaptcha();
+    } else {
+      ElMessage.error('验证码发送失败，请稍后重试');
+    }
+    isSendingCode.value = false;
+  }
+};
+
+// 处理忘记密码
+const handleForgotPassword = async () => {
+  forgotPasswordFormRef.value.validate(async (valid) => {
+    if (valid) {
+      try {
+        loading.forgotPassword = true;
+        await changePasswordWithCode({
+          code: forgotPasswordForm.code,
+          new_password: forgotPasswordForm.newPassword,
+          new_password2: forgotPasswordForm.confirmNewPassword,
+          captcha_key: forgotCaptcha.hashkey,
+          captcha_value: forgotPasswordForm.captcha_value
+        });
+        ElMessage.success('密码重置成功，请登录');
+        backToLogin();
+      } catch (error) {
+        console.error('Failed to reset password:', error);
+        if (error.response?.data?.captcha_value || error.response?.data?.captcha_key) {
+          ElMessage.error('图片验证码错误或已过期');
+          forgotPasswordForm.captcha_value = '';
+          refreshForgotCaptcha();
+        } else if (error.response?.data?.detail) {
+          ElMessage.error(error.response.data.detail);
+        } else {
+          ElMessage.error('密码重置失败，请检查验证码是否正确');
+        }
+      } finally {
+        loading.forgotPassword = false;
+      }
+    }
+  });
 };
 
 // 组件挂载时执行
@@ -720,6 +833,39 @@ onMounted(() => {
 
 <style scoped>
 @import 'animate.css';
+
+.captcha-wrapper {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.captcha-input {
+  flex: 1;
+}
+
+.captcha-img-box {
+  width: 120px;
+  height: 48px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  background-color: #f5f7fa;
+  border: 1px solid var(--el-border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.captcha-img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  filter: contrast(1.15) brightness(1.05);
+  opacity: 1;
+}
 
 .auth-container {
   position: relative;

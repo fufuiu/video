@@ -400,7 +400,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showPhoneDialog = false">取消</el-button>
-        <el-button type="primary" @click="bindPhone">确定</el-button>
+        <el-button type="primary" @click="handleBindPhone">确定</el-button>
       </template>
     </el-dialog>
     
@@ -461,7 +461,13 @@ import {
   ArrowRight
 } from '@element-plus/icons-vue';
 import PageHeader from '@/components/common/PageHeader.vue';
-import { getNotificationSettings, updateNotificationSettings } from '@/api/user';
+import { 
+  getNotificationSettings, updateNotificationSettings,
+  getUserSettings, updatePrivacySettings, updatePlaybackSettings, updateInterfaceSettings,
+  getLoginDevices, removeLoginDevice,
+  sendPhoneVerificationCode, bindPhone as bindPhoneApi,
+  changePassword as changePasswordApi
+} from '@/api/user';
 
 const activeTab = ref('notifications');
 
@@ -472,7 +478,6 @@ const tabs = [
   { name: 'playback', label: '播放设置', icon: VideoPlay },
   { name: 'interface', label: '界面设置', icon: Monitor },
   { name: 'security', label: '账号安全', icon: Key },
-  { name: 'data', label: '数据管理', icon: Delete }
 ];
 
 // 通知设置
@@ -517,13 +522,7 @@ const securitySettings = reactive({
   email: ''
 });
 
-// 数据管理（已删除）
-// const dataSettings = reactive({
-//   cacheSize: '128 MB',
-//   historyCount: 156,
-//   searchCount: 48,
-//   autoCache: false
-// });
+
 
 // 对话框显示状态
 const showPasswordDialog = ref(false);
@@ -549,15 +548,15 @@ const emailForm = reactive({
 });
 
 // 登录设备列表
-const loginDevices = ref([
-  { device: 'Windows 11 - Chrome', location: '北京市', time: '2026-01-21 20:30', current: true },
-  { device: 'iPhone 15 Pro - Safari', location: '上海市', time: '2026-01-20 15:20', current: false },
-  { device: 'MacBook Pro - Safari', location: '广州市', time: '2026-01-18 09:15', current: false }
-]);
+const loginDevices = ref([]);
 
 // 初始化数据
 onMounted(async () => {
-  await fetchNotificationSettings();
+  await Promise.all([
+    fetchNotificationSettings(),
+    fetchUserSettings(),
+    fetchLoginDevices()
+  ]);
 });
 
 // 获取通知设置
@@ -567,6 +566,67 @@ const fetchNotificationSettings = async () => {
     Object.assign(notificationSettings, res);
   } catch (error) {
     console.error('获取通知设置失败:', error);
+  }
+};
+
+// 获取用户综合设置
+const fetchUserSettings = async () => {
+  try {
+    const res = await getUserSettings();
+    if (res?.settings) {
+      // 隐私设置
+      privacySettings.publicProfile = res.settings.public_profile;
+      privacySettings.showHistory = res.settings.show_history;
+      privacySettings.allowMessages = res.settings.allow_messages;
+      privacySettings.publicCollections = res.settings.public_collections;
+      privacySettings.showFollowing = res.settings.show_following;
+      
+      // 播放设置
+      playbackSettings.autoplay = res.settings.autoplay;
+      playbackSettings.quality = res.settings.quality;
+      playbackSettings.speed = res.settings.speed;
+      playbackSettings.rememberVolume = res.settings.remember_volume;
+      playbackSettings.danmaku = res.settings.danmaku;
+      playbackSettings.rememberProgress = res.settings.remember_progress;
+      
+      // 界面设置
+      interfaceSettings.darkMode = res.settings.dark_mode;
+      interfaceSettings.layout = res.settings.layout;
+      interfaceSettings.pageSize = res.settings.page_size;
+      interfaceSettings.hoverPreview = res.settings.hover_preview;
+    }
+    if (res?.phone) {
+      securitySettings.phone = res.phone;
+    }
+    if (res?.email) {
+      securitySettings.email = res.email;
+    }
+  } catch (error) {
+    console.error('获取用户设置失败:', error);
+  }
+};
+
+// 获取登录设备列表
+const fetchLoginDevices = async () => {
+  try {
+    const res = await getLoginDevices();
+    loginDevices.value = (res || []).map(device => ({
+      id: device.id,
+      device: device.device_name,
+      location: device.location || '未知',
+      time: device.last_active,
+      current: device.is_current
+    }));
+  } catch (error) {
+    console.error('获取登录设备失败:', error);
+    // 如果获取失败，显示当前设备作为默认
+    loginDevices.value = [{
+      id: 1,
+      device: '当前设备',
+      location: '本地',
+      time: new Date().toLocaleString(),
+      current: true
+    }];
   }
 };
 
@@ -590,59 +650,108 @@ const updateNotificationSetting = async (setting) => {
 };
 
 // 更新隐私设置
-const updatePrivacySetting = (setting) => {
-  const status = privacySettings[setting] ? '开启' : '关闭';
-  const settingNames = {
-    publicProfile: '公开个人资料',
-    showHistory: '显示观看历史',
-    allowMessages: '允许私信',
-    publicCollections: '公开收藏夹',
-    showFollowing: '显示关注列表'
-  };
-  ElMessage.success(`已${status}${settingNames[setting]}`);
+const updatePrivacySetting = async (setting) => {
+  try {
+    // 转换字段名
+    const fieldMap = {
+      publicProfile: 'public_profile',
+      showHistory: 'show_history',
+      allowMessages: 'allow_messages',
+      publicCollections: 'public_collections',
+      showFollowing: 'show_following'
+    };
+    await updatePrivacySettings({ [fieldMap[setting]]: privacySettings[setting] });
+    
+    const status = privacySettings[setting] ? '开启' : '关闭';
+    const settingNames = {
+      publicProfile: '公开个人资料',
+      showHistory: '显示观看历史',
+      allowMessages: '允许私信',
+      publicCollections: '公开收藏夹',
+      showFollowing: '显示关注列表'
+    };
+    ElMessage.success(`已${status}${settingNames[setting]}`);
+  } catch (error) {
+    privacySettings[setting] = !privacySettings[setting];
+    ElMessage.error('设置更新失败');
+  }
 };
 
 // 更新播放设置
-const updatePlaybackSetting = (setting) => {
-  const settingNames = {
-    autoplay: '自动播放',
-    quality: '默认清晰度',
-    speed: '播放速度',
-    rememberVolume: '记忆音量',
-    danmaku: '弹幕显示',
-    rememberProgress: '记忆播放进度'
-  };
-  
-  if (setting === 'quality' || setting === 'speed') {
-    ElMessage.success(`已设置${settingNames[setting]}为 ${playbackSettings[setting]}`);
-  } else {
-    const status = playbackSettings[setting] ? '开启' : '关闭';
-    ElMessage.success(`已${status}${settingNames[setting]}`);
+const updatePlaybackSetting = async (setting) => {
+  try {
+    // 转换字段名
+    const fieldMap = {
+      autoplay: 'autoplay',
+      quality: 'quality',
+      speed: 'speed',
+      rememberVolume: 'remember_volume',
+      danmaku: 'danmaku',
+      rememberProgress: 'remember_progress'
+    };
+    await updatePlaybackSettings({ [fieldMap[setting]]: playbackSettings[setting] });
+    
+    const settingNames = {
+      autoplay: '自动播放',
+      quality: '默认清晰度',
+      speed: '播放速度',
+      rememberVolume: '记忆音量',
+      danmaku: '弹幕显示',
+      rememberProgress: '记忆播放进度'
+    };
+    
+    if (setting === 'quality' || setting === 'speed') {
+      ElMessage.success(`已设置${settingNames[setting]}为 ${playbackSettings[setting]}`);
+    } else {
+      const status = playbackSettings[setting] ? '开启' : '关闭';
+      ElMessage.success(`已${status}${settingNames[setting]}`);
+    }
+  } catch (error) {
+    if (setting !== 'quality' && setting !== 'speed') {
+      playbackSettings[setting] = !playbackSettings[setting];
+    }
+    ElMessage.error('设置更新失败');
   }
 };
 
 // 更新界面设置
-const updateInterfaceSetting = (setting) => {
-  const settingNames = {
-    darkMode: '深色模式',
-    layout: '首页布局',
-    pageSize: '每页显示数量',
-    hoverPreview: '悬停预览'
-  };
-  
-  if (setting === 'layout') {
-    const layoutText = interfaceSettings.layout === 'grid' ? '网格' : '列表';
-    ElMessage.success(`已切换到${layoutText}布局`);
-  } else if (setting === 'pageSize') {
-    ElMessage.success(`已设置每页显示 ${interfaceSettings.pageSize} 个视频`);
-  } else {
-    const status = interfaceSettings[setting] ? '开启' : '关闭';
-    ElMessage.success(`已${status}${settingNames[setting]}`);
+const updateInterfaceSetting = async (setting) => {
+  try {
+    // 转换字段名
+    const fieldMap = {
+      darkMode: 'dark_mode',
+      layout: 'layout',
+      pageSize: 'page_size',
+      hoverPreview: 'hover_preview'
+    };
+    await updateInterfaceSettings({ [fieldMap[setting]]: interfaceSettings[setting] });
+    
+    const settingNames = {
+      darkMode: '深色模式',
+      layout: '首页布局',
+      pageSize: '每页显示数量',
+      hoverPreview: '悬停预览'
+    };
+    
+    if (setting === 'layout') {
+      const layoutText = interfaceSettings.layout === 'grid' ? '网格' : '列表';
+      ElMessage.success(`已切换到${layoutText}布局`);
+    } else if (setting === 'pageSize') {
+      ElMessage.success(`已设置每页显示 ${interfaceSettings.pageSize} 个视频`);
+    } else {
+      const status = interfaceSettings[setting] ? '开启' : '关闭';
+      ElMessage.success(`已${status}${settingNames[setting]}`);
+    }
+  } catch (error) {
+    if (setting !== 'layout' && setting !== 'pageSize') {
+      interfaceSettings[setting] = !interfaceSettings[setting];
+    }
+    ElMessage.error('设置更新失败');
   }
 };
 
 // 修改密码
-const changePassword = () => {
+const changePassword = async () => {
   if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
     ElMessage.warning('请填写完整信息');
     return;
@@ -651,30 +760,49 @@ const changePassword = () => {
     ElMessage.error('两次输入的密码不一致');
     return;
   }
-  ElMessage.success('密码修改成功');
-  showPasswordDialog.value = false;
-  Object.assign(passwordForm, { oldPassword: '', newPassword: '', confirmPassword: '' });
+  try {
+    await changePasswordApi({
+      old_password: passwordForm.oldPassword,
+      new_password: passwordForm.newPassword,
+      new_password2: passwordForm.confirmPassword
+    });
+    ElMessage.success('密码修改成功，请重新登录');
+    showPasswordDialog.value = false;
+    Object.assign(passwordForm, { oldPassword: '', newPassword: '', confirmPassword: '' });
+  } catch (error) {
+    ElMessage.error(error.response?.data?.old_password?.[0] || '密码修改失败');
+  }
 };
 
 // 发送手机验证码
-const sendPhoneCode = () => {
+const sendPhoneCode = async () => {
   if (!phoneForm.phone) {
     ElMessage.warning('请输入手机号');
     return;
   }
-  ElMessage.success('验证码已发送');
+  try {
+    await sendPhoneVerificationCode(phoneForm.phone);
+    ElMessage.success('验证码已发送');
+  } catch (error) {
+    ElMessage.error(error.response?.data?.phone?.[0] || '验证码发送失败');
+  }
 };
 
 // 绑定手机
-const bindPhone = () => {
+const handleBindPhone = async () => {
   if (!phoneForm.phone || !phoneForm.code) {
     ElMessage.warning('请填写完整信息');
     return;
   }
-  securitySettings.phone = phoneForm.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
-  ElMessage.success('手机绑定成功');
-  showPhoneDialog.value = false;
-  Object.assign(phoneForm, { phone: '', code: '' });
+  try {
+    await bindPhoneApi(phoneForm.phone, phoneForm.code);
+    securitySettings.phone = phoneForm.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+    ElMessage.success('手机绑定成功');
+    showPhoneDialog.value = false;
+    Object.assign(phoneForm, { phone: '', code: '' });
+  } catch (error) {
+    ElMessage.error(error.response?.data?.phone?.[0] || '手机绑定失败');
+  }
 };
 
 // 发送邮箱验证码
@@ -699,18 +827,27 @@ const bindEmail = () => {
 };
 
 // 移除设备
-const removeDevice = (device) => {
-  ElMessageBox.confirm(`确定要移除设备"${device.device}"吗？`, '移除设备', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(() => {
-    const index = loginDevices.value.indexOf(device);
+const removeDevice = async (device) => {
+  try {
+    await ElMessageBox.confirm(`确定要移除设备"${device.device}"吗？`, '移除设备', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    });
+    
+    if (device.id) {
+      await removeLoginDevice(device.id);
+    }
+    const index = loginDevices.value.findIndex(d => d.id === device.id);
     if (index > -1) {
       loginDevices.value.splice(index, 1);
     }
     ElMessage.success('设备已移除');
-  }).catch(() => {});
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('移除设备失败');
+    }
+  }
 };
 </script>
 

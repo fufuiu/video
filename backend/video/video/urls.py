@@ -54,6 +54,9 @@ urlpatterns = [
     # AI 服务
     path('api/ai/', include('ai_service.urls')),
     
+    # 验证码
+    path('api/captcha/', include('captcha.urls')),
+    
     # 管理员API
     path('api/admin/', include('videos.admin_urls')),
     

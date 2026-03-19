@@ -49,13 +49,22 @@ class NSFWDetector:
             logger.info(f"CUDA 设备: {torch.cuda.get_device_name(0)}")
         
         # 加载模型
+        # 使用 os.path.abspath 并确保路径格式正确，避免 transformers 误认为是 repo_id
         abs_model_path = os.path.abspath(model_path)
-        logger.info(f"加载 NSFW 模型: {abs_model_path}")
+        if os.path.sep == '\\':
+            abs_model_path = abs_model_path.replace('\\', '/')
+        
+        # 强制转换为 Path 对象并确保是绝对路径
+        from pathlib import Path
+        model_p = Path(abs_model_path).resolve()
+            
+        logger.info(f"加载 NSFW 模型: {model_p}")
         
         self._model = AutoModelForImageClassification.from_pretrained(
-            abs_model_path,
+            str(model_p),
             torch_dtype=torch.bfloat16,
-            local_files_only=True
+            local_files_only=True,
+            trust_remote_code=True
         ).to(self._device)
         self._model.eval()
         

@@ -137,6 +137,10 @@ dump.rdb
 # 备份文件
 *.backup
 *.old
+*backups
+
+# 模型测试图
+evaluation_results/
 
 
 # PaddleOCR 模型文件（如果放在项目中）

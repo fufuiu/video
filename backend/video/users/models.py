@@ -71,9 +71,7 @@ class User(AbstractUser):
     vip_expire_time = models.DateTimeField(_('VIP到期时间'), null=True, blank=True)
     vip_level = models.IntegerField(_('VIP等级'), default=0, choices=[
         (0, _('非VIP')),
-        (1, _('青铜VIP')),
-        (2, _('白银VIP')),
-        (3, _('黄金VIP')),
+        (1, _('VIP')),
     ])
     
     # 用户设置
@@ -168,7 +166,7 @@ class User(AbstractUser):
         
         # 如果设置为VIP角色，确保VIP状态一致
         if role == 'vip' and not self.is_vip:
-            self.set_vip(1)  # 默认设为青铜VIP
+            self.set_vip(1)  # 默认设为VIP
         
         # 如果设置为管理员角色，确保staff状态一致
         if role in ['admin', 'superadmin'] and not self.is_staff:
@@ -265,7 +263,10 @@ class VIPOrder(models.Model):
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='vip_orders')
     order_id = models.CharField(_('订单号'), max_length=64, unique=True)
-    vip_level = models.IntegerField(_('VIP等级'), choices=User.vip_level.field.choices)
+    vip_level = models.IntegerField(_('VIP等级'), default=1, choices=[
+        (0, _('非VIP')),
+        (1, _('VIP')),
+    ])
     months = models.IntegerField(_('购买月数'), default=1)
     amount = models.DecimalField(_('支付金额'), max_digits=10, decimal_places=2)
     status = models.CharField(_('订单状态'), max_length=20, choices=ORDER_STATUS, default='pending')
@@ -339,3 +340,61 @@ class NotificationSetting(models.Model):
     
     def __str__(self):
         return f"{self.user.username}的通知设置"
+
+
+class UserSettings(models.Model):
+    """用户综合设置模型"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='user_settings')
+    
+    # 隐私设置
+    public_profile = models.BooleanField(_('公开个人资料'), default=True)
+    show_history = models.BooleanField(_('显示观看历史'), default=True)
+    allow_messages = models.BooleanField(_('允许私信'), default=True)
+    public_collections = models.BooleanField(_('公开收藏夹'), default=False)
+    show_following = models.BooleanField(_('显示关注列表'), default=True)
+    
+    # 播放设置
+    autoplay = models.BooleanField(_('自动播放'), default=True)
+    quality = models.CharField(_('默认清晰度'), max_length=10, default='auto')
+    speed = models.CharField(_('默认播放速度'), max_length=5, default='1.0')
+    remember_volume = models.BooleanField(_('记忆音量'), default=True)
+    danmaku = models.BooleanField(_('弹幕显示'), default=True)
+    remember_progress = models.BooleanField(_('记忆播放进度'), default=True)
+    
+    # 界面设置
+    dark_mode = models.BooleanField(_('深色模式'), default=False)
+    layout = models.CharField(_('首页布局'), max_length=10, default='grid')
+    page_size = models.IntegerField(_('每页显示数量'), default=24)
+    hover_preview = models.BooleanField(_('悬停预览'), default=True)
+    
+    created_at = models.DateTimeField(_('创建时间'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('更新时间'), auto_now=True)
+    
+    class Meta:
+        verbose_name = _('用户设置')
+        verbose_name_plural = _('用户设置')
+    
+    def __str__(self):
+        return f"{self.user.username}的用户设置"
+
+
+class LoginDevice(models.Model):
+    """登录设备模型"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='login_devices')
+    device_name = models.CharField(_('设备名称'), max_length=100)
+    device_type = models.CharField(_('设备类型'), max_length=20, blank=True)  # pc, mobile, tablet
+    browser = models.CharField(_('浏览器'), max_length=50, blank=True)
+    os = models.CharField(_('操作系统'), max_length=50, blank=True)
+    ip_address = models.GenericIPAddressField(_('IP地址'))
+    location = models.CharField(_('位置'), max_length=100, blank=True)
+    last_active = models.DateTimeField(_('最后活跃时间'), auto_now=True)
+    is_current = models.BooleanField(_('当前设备'), default=False)
+    created_at = models.DateTimeField(_('首次登录时间'), auto_now_add=True)
+    
+    class Meta:
+        verbose_name = _('登录设备')
+        verbose_name_plural = _('登录设备')
+        ordering = ['-last_active']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.device_name}"

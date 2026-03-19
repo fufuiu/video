@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from .models import Subscription, VerificationCode, UserNotification, NotificationSetting
+from .models import Subscription, VerificationCode, UserNotification, NotificationSetting, UserSettings, LoginDevice
 from .models_logs import SystemOperationLog
+from captcha.models import CaptchaStore
 
 User = get_user_model()
 
@@ -46,18 +47,34 @@ class UserCreateSerializer(serializers.ModelSerializer):
     """用户创建序列化器"""
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
+    captcha_key = serializers.CharField(write_only=True, required=True)
+    captcha_value = serializers.CharField(write_only=True, required=True)
     
     class Meta:
         model = User
-        fields = ('username', 'last_name', 'email', 'password', 'password2', 'avatar', 'bio', 'phone', 'gender', 'birthday')
+        fields = ('username', 'last_name', 'email', 'password', 'password2', 'captcha_key', 'captcha_value', 'avatar', 'bio', 'phone', 'gender', 'birthday')
     
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "两次密码不一致"})
+
+        # 校验图片验证码
+        captcha_key = attrs.get('captcha_key')
+        captcha_value = attrs.get('captcha_value')
+        try:
+            captcha = CaptchaStore.objects.get(hashkey=captcha_key)
+            if captcha.response.lower() != captcha_value.lower():
+                raise serializers.ValidationError({"captcha_value": "验证码错误"})
+            captcha.delete()  # 验证码只能使用一次
+        except CaptchaStore.DoesNotExist:
+            raise serializers.ValidationError({"captcha_key": "验证码已过期"})
+
         return attrs
     
     def create(self, validated_data):
         validated_data.pop('password2')
+        validated_data.pop('captcha_key', None)
+        validated_data.pop('captcha_value', None)
         user = User.objects.create_user(**validated_data)
         return user
 
@@ -116,6 +133,20 @@ class SendVerificationCodeSerializer(serializers.Serializer):
     """发送验证码序列化器"""
     code_type = serializers.ChoiceField(choices=VerificationCode.CODE_TYPES)
     email = serializers.EmailField(required=False)  # 仅在修改邮箱时需要
+    captcha_key = serializers.CharField(required=True)
+    captcha_value = serializers.CharField(required=True)
+
+    def validate(self, attrs):
+        captcha_key = attrs.get('captcha_key')
+        captcha_value = attrs.get('captcha_value')
+        try:
+            captcha = CaptchaStore.objects.get(hashkey=captcha_key)
+            if captcha.response.lower() != captcha_value.lower():
+                raise serializers.ValidationError({"captcha_value": "验证码错误"})
+            captcha.delete()  # 验证码只能使用一次
+        except CaptchaStore.DoesNotExist:
+            raise serializers.ValidationError({"captcha_key": "验证码已过期"})
+        return attrs
 
 
 class VerifyEmailSerializer(serializers.Serializer):
@@ -128,10 +159,23 @@ class ChangePasswordWithCodeSerializer(serializers.Serializer):
     code = serializers.CharField(required=True, min_length=6, max_length=6)
     new_password = serializers.CharField(required=True, validators=[validate_password])
     new_password2 = serializers.CharField(required=True)
+    captcha_key = serializers.CharField(required=True)
+    captcha_value = serializers.CharField(required=True)
     
     def validate(self, attrs):
         if attrs['new_password'] != attrs['new_password2']:
             raise serializers.ValidationError({"new_password": "两次密码不一致"})
+
+        captcha_key = attrs.get('captcha_key')
+        captcha_value = attrs.get('captcha_value')
+        try:
+            captcha = CaptchaStore.objects.get(hashkey=captcha_key)
+            if captcha.response.lower() != captcha_value.lower():
+                raise serializers.ValidationError({"captcha_value": "验证码错误"})
+            captcha.delete()  # 验证码只能使用一次
+        except CaptchaStore.DoesNotExist:
+            raise serializers.ValidationError({"captcha_key": "验证码已过期"})
+
         return attrs
 
 
@@ -256,3 +300,35 @@ class SystemOperationLogSerializer(serializers.ModelSerializer):
                  'target_type', 'target_id', 'target_name', 'request_method', 'request_path',
                  'response_code', 'duration', 'created_at')
         read_only_fields = fields 
+
+
+class UserSettingsSerializer(serializers.ModelSerializer):
+    """用户综合设置序列化器"""
+    class Meta:
+        model = UserSettings
+        fields = ('id', 'public_profile', 'show_history', 'allow_messages', 
+                  'public_collections', 'show_following',
+                  'autoplay', 'quality', 'speed', 'remember_volume', 
+                  'danmaku', 'remember_progress',
+                  'dark_mode', 'layout', 'page_size', 'hover_preview')
+        read_only_fields = ('id',)
+
+
+class LoginDeviceSerializer(serializers.ModelSerializer):
+    """登录设备序列化器"""
+    class Meta:
+        model = LoginDevice
+        fields = ('id', 'device_name', 'device_type', 'browser', 'os', 
+                  'ip_address', 'location', 'last_active', 'is_current', 'created_at')
+        read_only_fields = ('id', 'created_at', 'last_active')
+
+
+class BindPhoneSerializer(serializers.Serializer):
+    """绑定手机序列化器"""
+    phone = serializers.CharField(required=True, max_length=20)
+    code = serializers.CharField(required=True, min_length=6, max_length=6)
+
+
+class SendPhoneCodeSerializer(serializers.Serializer):
+    """发送手机验证码序列化器"""
+    phone = serializers.CharField(required=True, max_length=20) 

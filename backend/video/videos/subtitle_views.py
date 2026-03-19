@@ -14,6 +14,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _require_vip(request):
+    """字幕工具为VIP功能：非VIP返回 403"""
+    user = getattr(request, 'user', None)
+    is_vip_active = bool(getattr(user, 'is_vip_active', False) or getattr(user, 'is_vip', False))
+    if not is_vip_active:
+        return Response({'error': '该功能需要开通VIP'}, status=status.HTTP_403_FORBIDDEN)
+    return None
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def translate_subtitles(request, video_id):
@@ -23,6 +32,9 @@ def translate_subtitles(request, video_id):
     请求参数:
     - target_language: 目标语言 (zh/en/ja 等)
     """
+    vip_denied = _require_vip(request)
+    if vip_denied:
+        return vip_denied
     return asyncio.run(_translate_subtitles_async(request, video_id))
 
 
@@ -163,6 +175,9 @@ def optimize_subtitles(request, video_id):
     """
     优化视频字幕（修正错别字、标点符号等）
     """
+    vip_denied = _require_vip(request)
+    if vip_denied:
+        return vip_denied
     return asyncio.run(_optimize_subtitles_async(request, video_id))
 
 

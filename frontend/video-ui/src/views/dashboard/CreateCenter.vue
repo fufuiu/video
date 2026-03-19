@@ -1,22 +1,25 @@
 <template>
   <div class="create-center-wrapper">
     <!-- 顶部导航栏 -->
-    <div class="top-nav">
+    <div class="top-nav animate__animated animate__fadeInDown">
       <div class="nav-content">
         <div class="nav-left">
-          <div class="logo" @click="goToHome">
+          <div class="logo animate__animated animate__bounceIn" @click="goToHome">
             <span class="logo-text">MindPalette</span>
           </div>
-          <h1 class="page-title">创作中心</h1>
+          <h1 class="page-title animate__animated animate__fadeInLeft animate__delay-1s">创作中心</h1>
         </div>
-        <div class="nav-actions">
+        <div class="nav-actions animate__animated animate__fadeInRight animate__delay-1s">
           <!-- 草稿保存状态 -->
-          <transition name="fade">
+          <transition 
+            enter-active-class="animate__animated animate__fadeInDown animate__faster"
+            leave-active-class="animate__animated animate__fadeOutUp animate__faster"
+          >
             <div v-if="draftSaveStatus" class="draft-status">
               <el-icon v-if="draftSaveStatus === 'saving'" class="is-loading">
                 <Loading />
               </el-icon>
-              <el-icon v-else-if="draftSaveStatus === 'saved'" class="success-icon">
+              <el-icon v-else-if="draftSaveStatus === 'saved'" class="success-icon animate__animated animate__bounceIn">
                 <CircleCheck />
               </el-icon>
               <span class="status-text">
@@ -27,10 +30,10 @@
           
           <!-- 草稿操作按钮 -->
           <el-dropdown v-if="activeTab === 'upload'" trigger="click" @command="handleDraftCommand">
-            <el-button class="draft-btn">
+            <el-button class="draft-btn animate__animated animate__fadeInUp animate__delay-2s">
               <el-icon><DocumentCopy /></el-icon>
               草稿
-              <el-badge v-if="hasDraft" is-dot class="draft-badge" />
+              <el-badge v-if="hasDraft" is-dot class="draft-badge animate__animated animate__pulse animate__infinite" />
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -47,7 +50,7 @@
           </el-dropdown>
           
           <el-button 
-            class="dashboard-btn"
+            class="dashboard-btn animate__animated animate__fadeInUp animate__delay-2s"
             @click="goToDashboard"
           >
             <el-icon><User /></el-icon>
@@ -56,7 +59,7 @@
           <el-button 
             v-if="activeTab === 'upload'"
             type="primary" 
-            class="record-btn"
+            class="record-btn animate__animated animate__fadeInUp animate__delay-3s"
             @click="switchTab('record')"
           >
             录制视频
@@ -64,7 +67,7 @@
           </el-button>
           <el-button 
             v-else
-            class="back-btn"
+            class="back-btn animate__animated animate__fadeInLeft"
             @click="switchTab('upload')"
           >
             <el-icon><ArrowLeft /></el-icon>
@@ -79,10 +82,10 @@
       <div class="slider-wrapper" :style="{ transform: `translateX(-${activeTab === 'record' ? 50 : 0}%)` }">
         <!-- 上传视频页面 -->
         <div class="slide-page upload-page">
-          <div class="upload-container">
+          <div class="upload-container animate__animated animate__fadeInUp">
             <div class="upload-wrapper">
               <!-- 左侧上传区 -->
-              <div class="upload-area">
+              <div class="upload-area animate__animated animate__fadeInLeft animate__delay-1s">
                 <VideoUploadPreview
                   :file="selectedFile"
                   :preview-url="videoPreviewUrl"
@@ -98,10 +101,10 @@
               </div>
 
               <!-- 右侧表单区 -->
-              <div class="form-area">
+              <div class="form-area animate__animated animate__fadeInRight animate__delay-1s">
                 <el-form :model="videoForm" label-position="top" class="video-form">
                   <!-- 封面 -->
-                  <el-form-item label="封面" required class="cover-item">
+                  <el-form-item label="封面" required class="cover-item animate__animated animate__fadeInUp animate__delay-2s">
                     <CoverSelector
                       v-model:covers="generatedCovers"
                       v-model:selectedIndex="selectedCoverIndex"
@@ -109,7 +112,7 @@
                   </el-form-item>
 
                   <!-- 标题 -->
-                  <el-form-item label="标题" required>
+                  <el-form-item label="标题" required class="animate__animated animate__fadeInUp animate__delay-2s">
                     <el-input 
                       v-model="videoForm.title" 
                       placeholder="请输入标题" 
@@ -120,7 +123,7 @@
                   </el-form-item>
 
                   <!-- 分区 -->
-                  <el-form-item label="分区" required>
+                  <el-form-item label="分区" required class="animate__animated animate__fadeInUp animate__delay-3s">
                     <el-select 
                       v-model="videoForm.category_id" 
                       placeholder="选择分区" 
@@ -136,17 +139,18 @@
                   </el-form-item>
 
                   <!-- 标签 -->
-                  <el-form-item label="标签" class="tag-form-item">
+                  <el-form-item label="标签" class="tag-form-item animate__animated animate__fadeInUp animate__delay-3s">
                     <div class="tag-container">
                       <div class="tag-wrapper">
                         <div class="tag-list">
                           <div 
                             v-for="tag in videoForm.tags" 
                             :key="tag" 
-                            class="tag-chip"
+                            :data-tag-id="tag"
+                            class="tag-chip animate__animated animate__bounceIn"
                           >
                             {{ getTagName(tag) }}
-                            <span class="tag-remove" @click="removeTag(tag)">×</span>
+                            <span class="tag-remove animate__animated animate__pulse animate__infinite animate__slower" @click="removeTag(tag)">×</span>
                           </div>
                           <input
                             ref="tagInput"
@@ -185,7 +189,7 @@
                   </el-form-item>
 
                   <!-- 简介 -->
-                  <el-form-item label="简介">
+                  <el-form-item label="简介" class="animate__animated animate__fadeInUp animate__delay-4s">
                     <el-input 
                       v-model="videoForm.description" 
                       type="textarea" 
@@ -198,7 +202,7 @@
                   </el-form-item>
 
                   <!-- 发布设置 -->
-                  <el-form-item label="发布设置" class="publish-settings-item">
+                  <el-form-item label="发布设置" class="publish-settings-item animate__animated animate__fadeInUp animate__delay-4s">
                     <el-collapse v-model="activeCollapse" class="settings-collapse">
                       <el-collapse-item name="publish">
                         <template #title>
@@ -301,7 +305,7 @@
                   </el-form-item>
 
                   <!-- 底部操作按钮 -->
-                  <div class="form-footer">
+                  <div class="form-footer animate__animated animate__fadeInUp animate__delay-5s">
                     <el-button @click="resetForm" class="btn-cancel">
                       取消
                     </el-button>
@@ -322,7 +326,7 @@
 
         <!-- 录制视频页面 -->
         <div class="slide-page record-page">
-          <div class="record-container">
+          <div class="record-container animate__animated animate__fadeInUp">
             <VideoRecorder 
               ref="videoRecorderRef"
               @save="handleRecordedVideo"
@@ -676,6 +680,15 @@ const switchTab = (tabName) => {
     videoRecorderRef.value.stopCamera();
   }
   
+  // 添加切换动效
+  const mainContainer = document.querySelector('.main-container');
+  if (mainContainer) {
+    mainContainer.classList.add('animate__animated', 'animate__fadeIn');
+    setTimeout(() => {
+      mainContainer.classList.remove('animate__animated', 'animate__fadeIn');
+    }, 600);
+  }
+  
   activeTab.value = tabName;
   
   if (tabName === 'record' && videoRecorderRef.value) {
@@ -772,6 +785,15 @@ const addTag = () => {
       }
       tags.value.push(newTag);
       videoForm.tags.push(newTagId);
+      
+      // 添加标签成功动效
+      nextTick(() => {
+        const tagElements = document.querySelectorAll('.tag-chip');
+        const lastTag = tagElements[tagElements.length - 1];
+        if (lastTag) {
+          lastTag.classList.add('animate__animated', 'animate__bounceIn');
+        }
+      });
     }
     
     tagInputValue.value = '';
@@ -787,7 +809,15 @@ const addTag = () => {
 };
 
 const removeTag = (tag) => {
-  videoForm.tags.splice(videoForm.tags.indexOf(tag), 1);
+  const tagElement = document.querySelector(`[data-tag-id="${tag}"]`);
+  if (tagElement) {
+    tagElement.classList.add('animate__animated', 'animate__bounceOut');
+    setTimeout(() => {
+      videoForm.tags.splice(videoForm.tags.indexOf(tag), 1);
+    }, 300);
+  } else {
+    videoForm.tags.splice(videoForm.tags.indexOf(tag), 1);
+  }
 };
 
 const clearAllTags = () => {
@@ -2100,6 +2130,65 @@ onBeforeUnmount(() => {
   .upload-wrapper {
     grid-template-columns: minmax(500px, 1fr) 1fr;
   }
+}
+
+/* 动效优化 */
+.animate__animated {
+  animation-fill-mode: both;
+}
+
+.animate__delay-1s {
+  animation-delay: 0.3s;
+}
+
+.animate__delay-2s {
+  animation-delay: 0.6s;
+}
+
+.animate__delay-3s {
+  animation-delay: 0.9s;
+}
+
+.animate__delay-4s {
+  animation-delay: 1.2s;
+}
+
+.animate__delay-5s {
+  animation-delay: 1.5s;
+}
+
+/* 标签动效 */
+.tag-chip.animate__bounceOut {
+  animation-duration: 0.3s;
+}
+
+/* 按钮悬停动效增强 */
+.record-btn:hover {
+  background: #7c3aed;
+  transform: translateX(4px) scale(1.02);
+  animation: pulse 1s infinite;
+}
+
+.back-btn:hover {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+  background: #fff;
+  transform: translateX(-4px) scale(1.02);
+}
+
+/* 草稿徽章脉冲动效 */
+.draft-badge .animate__pulse {
+  animation-duration: 2s;
+}
+
+/* 成功图标动效 */
+.success-icon.animate__bounceIn {
+  animation-duration: 0.6s;
+}
+
+/* 主容器切换动效 */
+.main-container.animate__fadeIn {
+  animation-duration: 0.6s;
 }
 
 /* 字幕通知样式 */

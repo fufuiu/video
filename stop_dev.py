@@ -10,7 +10,7 @@ PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dev_pids.j
 try:
     import psutil
     HAS_PSUTIL = True
-except ImportError:
+except ImportError:   
     HAS_PSUTIL = False
     print("提示: 安装 psutil 可获得更好的进程管理体验")
     print("      pip install psutil\n")

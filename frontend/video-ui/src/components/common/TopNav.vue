@@ -51,11 +51,10 @@
 
           <!-- 消息按钮 -->
           <div class="notification-wrapper" v-click-outside="closeNotificationMenu">
-            <button class="icon-button" @click="toggleNotificationMenu" title="消息通知">
-              <el-icon :size="20">
-                <Bell />
-              </el-icon>
-              <span v-if="unreadCount > 0" class="badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+            <button class="btn-notification" @click="toggleNotificationMenu">
+              <el-icon :size="16"><Bell /></el-icon>
+              <span>消息</span>
+              <span v-if="unreadCount > 0" class="btn-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
             </button>
             
             <!-- 消息下拉菜单 -->
@@ -254,6 +253,11 @@ const goLogin = () => {
 
 const goUpload = () => {
   router.push('/user/dashboard')
+  showUserMenu.value = false
+}
+
+const goVip = () => {
+  router.push('/user/vip')
   showUserMenu.value = false
 }
 
@@ -475,6 +479,48 @@ onMounted(() => {
 .btn-upload svg {
   width: 18px;
   height: 18px;
+}
+
+/* 消息按钮 */
+.btn-notification {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.btn-notification:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+}
+
+.btn-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ef4444;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 9px;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
 }
 
 /* 图标按钮 - Dashboard风格 */

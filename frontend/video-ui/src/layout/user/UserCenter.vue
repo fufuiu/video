@@ -17,8 +17,14 @@
           <span>投稿</span>
         </a>
         
-        <a href="#" class="notification" @click.prevent="toggleNotificationMenu">
-          <el-icon class="bx"><Bell /></el-icon>
+        <a href="#" class="vip-btn" @click.prevent="navigateTo('/user/vip')">
+          <el-icon><Medal /></el-icon>
+          <span>VIP</span>
+        </a>
+        
+        <a href="#" class="notification-btn" @click.prevent="toggleNotificationMenu">
+          <el-icon><Bell /></el-icon>
+          <span>消息</span>
           <span class="num" v-if="unreadNotifications > 0">{{ unreadNotifications > 99 ? '99+' : unreadNotifications }}</span>
         </a>
         <div class="notification-menu" :class="{ 'show': showNotificationMenu }">
@@ -90,7 +96,7 @@ import { useNotificationStore } from '@/store/notification';
 import UserSidebar from '@/layout/user/UserSidebar.vue';
 import { 
   Refresh, FullScreen, Fold, Expand, 
-  Search, Bell, User, Setting, SwitchButton, Upload
+  Search, Bell, User, Setting, SwitchButton, Upload, Medal
 } from '@element-plus/icons-vue';
 
 const userStore = useUserStore();
@@ -165,10 +171,8 @@ const toggleProfileMenu = () => {
 
 // 点击外部关闭菜单
 const handleClickOutside = (event) => {
-  if (!event.target.closest('.notification') && !event.target.closest('.notification-menu')) {
+  if (!event.target.closest('.notification-btn, .notification-menu, .profile, .profile-menu')) {
     showNotificationMenu.value = false;
-  }
-  if (!event.target.closest('.profile') && !event.target.closest('.profile-menu')) {
     showProfileMenu.value = false;
   }
 };
@@ -342,14 +346,72 @@ nav .nav-right .upload-btn .el-icon {
   font-size: 16px;
 }
 
-nav .nav-right .notification {
-  position: relative;
-  cursor: pointer;
+nav .nav-right .vip-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+  color: #333;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
 }
 
-nav .nav-right .notification .bx {
-  font-size: 24px;
-  color: var(--dark);
+nav .nav-right .vip-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
+}
+
+nav .nav-right .vip-btn .el-icon {
+  font-size: 16px;
+  color: #ff6600;
+}
+
+nav .nav-right .notification-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  position: relative;
+}
+
+nav .nav-right .notification-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+}
+
+nav .nav-right .notification-btn .el-icon {
+  font-size: 16px;
+}
+
+nav .nav-right .notification-btn .num {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--red);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  padding: 0 4px;
 }
 
 /* Dropdown menus */

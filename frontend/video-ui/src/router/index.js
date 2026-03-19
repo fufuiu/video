@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { getToken } from '@/utils/auth';
 import { getUserInfo } from '@/api/user';
+import { ElMessage } from 'element-plus';
 import NProgress from 'nprogress';
 import 'nprogress/nprogress.css';
 
@@ -48,7 +49,7 @@ const routes = [
     path: '/creator/subtitle',
     name: 'SubtitleEditor',
     component: () => import('@/views/creator/SubtitleEditor.vue'),
-    meta: { requiresAuth: true, title: '字幕编辑器' }
+    meta: { requiresAuth: true, requiresVip: true, title: '字幕编辑器' }
   },
   // 用户中心路由
   {
@@ -116,6 +117,12 @@ const routes = [
         name: 'RecycleBin',
         component: () => import('@/views/user/RecycleBin.vue'),
         meta: { title: '回收站', icon: 'delete' }
+      },
+      {
+        path: 'vip',
+        name: 'VipRecharge',
+        component: () => import('@/views/user/VipRecharge.vue'),
+        meta: { title: 'VIP会员', icon: 'crown' }
       }
     ]
   },
@@ -251,8 +258,9 @@ router.beforeEach(async (to, from, next) => {
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
   const requiresAdmin = to.matched.some(record => record.meta.requiresAdmin);
   const requiresSuperAdmin = to.matched.some(record => record.meta.requiresSuperAdmin);
+  const requiresVip = to.matched.some(record => record.meta.requiresVip);
   
-  if (requiresAuth || requiresAdmin || requiresSuperAdmin) {
+  if (requiresAuth || requiresAdmin || requiresSuperAdmin || requiresVip) {
     const hasToken = getToken();
     
     if (hasToken) {
@@ -303,7 +311,24 @@ router.beforeEach(async (to, from, next) => {
           next('/user/dashboard');
         }
       } else {
-        next();
+        if (requiresVip) {
+          try {
+            const userInfo = await getUserInfo();
+            const isVipActive = Boolean(userInfo?.is_vip_active || userInfo?.is_vip);
+            if (isVipActive) {
+              next();
+            } else {
+              ElMessage.error('该功能需要开通VIP')
+              next('/user/vip')
+            }
+          } catch (error) {
+            console.error('Failed to check vip status:', error);
+            ElMessage.error('该功能需要开通VIP')
+            next('/user/vip')
+          }
+        } else {
+          next();
+        }
       }
     } else {
       next({

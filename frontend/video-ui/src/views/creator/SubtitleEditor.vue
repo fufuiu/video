@@ -1,5 +1,5 @@
 <template>
-  <div class="subtitle-editor">
+  <div class="subtitle-editor animate__animated animate__fadeIn animate__faster">
     <!-- 顶部工具栏 -->
     <EditorToolbar
       :video-title="videoTitle"
@@ -16,7 +16,7 @@
     <!-- 上半部分：视频+控制面板 和 字幕列表 -->
     <div class="top-section">
       <!-- 左侧：视频+控制面板 -->
-      <div class="video-section">
+      <div class="video-section animate__animated animate__fadeInLeft animate__fast">
         <VideoPlayerSection
           ref="videoPlayerRef"
           :video-url="videoUrl"
@@ -35,7 +35,7 @@
       </div>
 
       <!-- 右侧：字幕列表 -->
-      <div class="subtitle-section">
+      <div class="subtitle-section animate__animated animate__fadeInRight animate__fast">
         <SubtitleList
           :subtitles="subtitles"
           :current-subtitle-index="currentSubtitleIndex"
@@ -51,7 +51,7 @@
     </div>
 
     <!-- 下半部分：时间轴 -->
-    <div class="bottom-section">
+    <div class="bottom-section animate__animated animate__fadeInUp animate__fast">
       <TimelinePanel
         :subtitles="subtitles"
         :current-subtitle-index="currentSubtitleIndex"

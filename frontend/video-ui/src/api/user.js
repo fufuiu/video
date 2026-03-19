@@ -216,6 +216,17 @@ export function changePassword(data) {
   });
 }
 
+/**
+ * 获取图片验证码
+ * @returns {Promise} { hashkey, image_url }
+ */
+export function getCaptcha() {
+  return service({
+    url: '/auth/captcha/',
+    method: 'get'
+  });
+}
+
 // Send test email
 export function sendTestEmail(email) {
   return service({
@@ -344,6 +355,174 @@ export function updateNotificationSettings(data) {
   });
 }
 
+/**
+ * 获取用户综合设置
+ * @returns {Promise}
+ */
+export function getUserSettings() {
+  return service({
+    url: '/users/user-settings/',
+    method: 'get'
+  });
+}
+
+/**
+ * 更新用户综合设置
+ * @param {Object} data 设置数据
+ * @returns {Promise}
+ */
+export function updateUserSettings(data) {
+  return service({
+    url: '/users/user-settings/',
+    method: 'put',
+    data
+  });
+}
+
+/**
+ * 获取隐私设置
+ * @returns {Promise}
+ */
+export function getPrivacySettings() {
+  return service({
+    url: '/users/user-settings/privacy/',
+    method: 'get'
+  });
+}
+
+/**
+ * 更新隐私设置
+ * @param {Object} data 隐私设置数据
+ * @returns {Promise}
+ */
+export function updatePrivacySettings(data) {
+  return service({
+    url: '/users/user-settings/update_privacy/',
+    method: 'put',
+    data
+  });
+}
+
+/**
+ * 获取播放设置
+ * @returns {Promise}
+ */
+export function getPlaybackSettings() {
+  return service({
+    url: '/users/user-settings/playback/',
+    method: 'get'
+  });
+}
+
+/**
+ * 更新播放设置
+ * @param {Object} data 播放设置数据
+ * @returns {Promise}
+ */
+export function updatePlaybackSettings(data) {
+  return service({
+    url: '/users/user-settings/update_playback/',
+    method: 'put',
+    data
+  });
+}
+
+/**
+ * 获取界面设置
+ * @returns {Promise}
+ */
+export function getInterfaceSettings() {
+  return service({
+    url: '/users/user-settings/interface/',
+    method: 'get'
+  });
+}
+
+/**
+ * 更新界面设置
+ * @param {Object} data 界面设置数据
+ * @returns {Promise}
+ */
+export function updateInterfaceSettings(data) {
+  return service({
+    url: '/users/user-settings/update_interface/',
+    method: 'put',
+    data
+  });
+}
+
+/**
+ * 获取登录设备列表
+ * @returns {Promise}
+ */
+export function getLoginDevices() {
+  return service({
+    url: '/users/login-devices/',
+    method: 'get'
+  });
+}
+
+/**
+ * 移除登录设备
+ * @param {Number} deviceId 设备ID
+ * @returns {Promise}
+ */
+export function removeLoginDevice(deviceId) {
+  return service({
+    url: `/users/login-devices/${deviceId}/`,
+    method: 'delete'
+  });
+}
+
+/**
+ * 移除所有其他设备
+ * @returns {Promise}
+ */
+export function removeAllOtherDevices() {
+  return service({
+    url: '/users/login-devices/remove_all/',
+    method: 'post'
+  });
+}
+
+/**
+ * 发送手机验证码
+ * @param {String} phone 手机号
+ * @returns {Promise}
+ */
+export function sendPhoneVerificationCode(phone) {
+  return service({
+    url: '/users/bind-phone/send_code/',
+    method: 'post',
+    data: { phone }
+  });
+}
+
+/**
+ * 绑定手机号
+ * @param {String} phone 手机号
+ * @param {String} code 验证码
+ * @returns {Promise}
+ */
+export function bindPhone(phone, code) {
+  return service({
+    url: '/users/bind-phone/bind/',
+    method: 'post',
+    data: { phone, code }
+  });
+}
+
+/**
+ * 解绑手机号
+ * @returns {Promise}
+ */
+export function unbindPhone() {
+  return service({
+    url: '/users/bind-phone/unbind/',
+    method: 'post'
+  });
+}
+
 // Subscribe to user
 export function subscribeUser(userId) {
   return service({
@@ -407,6 +586,82 @@ export function checkSubscriptionStatus(userId) {
   .catch(error => {
     console.error('检查订阅状态失败:', error);
     return Promise.reject(error);
+  });
+}
+
+// ==================== VIP支付相关 ====================
+
+/**
+ * 获取VIP套餐列表
+ * @returns {Promise}
+ */
+export function getVipPackages() {
+  return service({
+    url: '/users/vip/packages/',
+    method: 'get'
+  });
+}
+
+/**
+ * 获取VIP订单列表
+ * @returns {Promise}
+ */
+export function getVipOrders() {
+  return service({
+    url: '/users/vip/orders/',
+    method: 'get'
+  });
+}
+
+/**
+ * 创建VIP订单
+ * @param {Object} data { vip_level, duration, payment_method }
+ * @returns {Promise}
+ */
+export function createVipOrder(data) {
+  return service({
+    url: '/users/vip/create/',
+    method: 'post',
+    data
+  });
+}
+
+/**
+ * 检查订单状态
+ * @param {Object} params { order_id }
+ * @returns {Promise}
+ */
+export function checkOrderStatus(params) {
+  return service({
+    url: '/users/vip/check/',
+    method: 'get',
+    params
+  });
+}
+
+/**
+ * 取消订单
+ * @param {String} orderId 订单号
+ * @returns {Promise}
+ */
+export function cancelVipOrder(orderId) {
+  return service({
+    url: '/users/vip/cancel/',
+    method: 'post',
+    data: { order_id: orderId }
+  });
+}
+
+/**
+ * 开发环境：模拟VIP订单支付成功
+ * @param {String} orderId 订单号
+ * @returns {Promise}
+ */
+export function devMarkVipOrderPaid(orderId) {
+  return service({
+    url: '/users/vip/dev/mark-paid/',
+    method: 'post',
+    data: { order_id: orderId }
   });
 }
 
