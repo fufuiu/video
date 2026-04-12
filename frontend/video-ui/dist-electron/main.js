@@ -26,25 +26,33 @@ function createWindow() {
     mainWindow.loadURL("http://localhost:5173").catch(() => {
       mainWindow.loadURL("http://localhost:5174");
     });
+    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
-  app.on("browser-window-focus", () => {
-    globalShortcut.register("F12", () => {
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+    const ctrl = input.control || input.meta;
+    if (input.key === "F12") {
       mainWindow?.webContents.toggleDevTools();
-    });
-    globalShortcut.register("F11", () => {
+      event.preventDefault();
+    } else if (input.key === "F11") {
       if (mainWindow) {
-        const isFullScreen = mainWindow.isFullScreen();
-        mainWindow.setFullScreen(!isFullScreen);
+        mainWindow.setFullScreen(!mainWindow.isFullScreen());
       }
-    });
-    globalShortcut.register("CommandOrControl+R", () => {
+      event.preventDefault();
+    } else if (input.key === "F5" || ctrl && input.key === "r") {
       mainWindow?.reload();
-    });
-    globalShortcut.register("F5", () => {
-      mainWindow?.reload();
-    });
+      event.preventDefault();
+    } else if (ctrl && input.key === "w") {
+      mainWindow?.hide();
+      event.preventDefault();
+    } else if (ctrl && input.key === "q") {
+      app.exit(0);
+      event.preventDefault();
+    }
+  });
+  app.on("browser-window-focus", () => {
     globalShortcut.register("Alt+Left", () => {
       if (mainWindow?.webContents.canGoBack()) {
         mainWindow.webContents.goBack();
@@ -54,14 +62,6 @@ function createWindow() {
       if (mainWindow?.webContents.canGoForward()) {
         mainWindow.webContents.goForward();
       }
-    });
-    globalShortcut.register("CommandOrControl+W", () => {
-      if (mainWindow) {
-        mainWindow.hide();
-      }
-    });
-    globalShortcut.register("CommandOrControl+Q", () => {
-      app.exit(0);
     });
   });
   app.on("browser-window-blur", () => {

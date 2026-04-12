@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db.models import Count, Sum, Q
-from datetime import timedelta
+from datetime import timedelta, datetime
 from videos.models import Video
 
 User = get_user_model()
@@ -33,8 +33,8 @@ class StatisticsViewSet(viewsets.ViewSet):
 
         today = timezone.now().date()
         
-        # 用户统计
-        all_users = User.objects.filter(role__in=['user', 'vip'])
+        # 用户统计（统计全部用户，包括管理员）
+        all_users = User.objects.all()
         total_users = all_users.count()
         vip_users = all_users.filter(is_vip=True).count()
         active_users = all_users.filter(is_active=True).count()
@@ -46,10 +46,10 @@ class StatisticsViewSet(viewsets.ViewSet):
         new_videos_today = all_videos.filter(created_at__date=today).count()
         
         # 观看统计
-        total_views = all_videos.aggregate(total=Sum('views'))['total'] or 0
+        total_views = all_videos.aggregate(total=Sum('views_count'))['total'] or 0
         views_today = all_videos.filter(
             created_at__date=today
-        ).aggregate(total=Sum('views'))['total'] or 0
+        ).aggregate(total=Sum('views_count'))['total'] or 0
 
         return Response({
             'total_users': total_users,
@@ -78,9 +78,12 @@ class StatisticsViewSet(viewsets.ViewSet):
         
         for i in range(days):
             date = start_date + timedelta(days=i)
+            # 使用时区感知的 datetime 范围查询
+            day_start = timezone.make_aware(datetime.combine(date, datetime.min.time()))
+            day_end = timezone.make_aware(datetime.combine(date + timedelta(days=1), datetime.min.time()))
             count = User.objects.filter(
-                role__in=['user', 'vip'],
-                created_at__date=date
+                created_at__gte=day_start,
+                created_at__lt=day_end
             ).count()
             dates.append(date.strftime('%m-%d'))
             counts.append(count)
@@ -106,9 +109,13 @@ class StatisticsViewSet(viewsets.ViewSet):
         
         for i in range(days):
             date = start_date + timedelta(days=i)
+            # 使用时区感知的 datetime 范围查询
+            day_start = timezone.make_aware(datetime.combine(date, datetime.min.time()))
+            day_end = timezone.make_aware(datetime.combine(date + timedelta(days=1), datetime.min.time()))
             count = Video.objects.filter(
                 deleted_at__isnull=True,
-                created_at__date=date
+                created_at__gte=day_start,
+                created_at__lt=day_end
             ).count()
             dates.append(date.strftime('%m-%d'))
             counts.append(count)
@@ -125,15 +132,15 @@ class StatisticsViewSet(viewsets.ViewSet):
         if error_response:
             return error_response
 
-        role_stats = User.objects.filter(
-            role__in=['user', 'vip']
-        ).values('role').annotate(
+        role_stats = User.objects.values('role').annotate(
             count=Count('id')
         )
         
         role_display_map = {
             'user': '普通用户',
-            'vip': 'VIP用户'
+            'vip': 'VIP用户',
+            'admin': '管理员',
+            'superadmin': '超级管理员'
         }
         
         result = []
@@ -153,18 +160,24 @@ class StatisticsViewSet(viewsets.ViewSet):
         if error_response:
             return error_response
 
+        # 统计页只展示审核相关状态，过滤掉上传/字幕编辑/转码等中间态
         status_stats = Video.objects.filter(
-            deleted_at__isnull=True
+            deleted_at__isnull=True,
+            status__in=['pending', 'approved', 'rejected', 'taken_down']
         ).values('status').annotate(
             count=Count('id')
         )
         
         status_display_map = {
-            'draft': '草稿',
+            'uploading': '上传中',
+            'pending_subtitle_edit': '待字幕编辑',
+            'processing': '处理中',
+            'ready': '就绪',
+            'failed': '失败',
             'pending': '待审核',
             'approved': '已通过',
             'rejected': '已拒绝',
-            'processing': '处理中'
+            'taken_down': '已下架'
         }
         
         result = []
@@ -189,7 +202,7 @@ class StatisticsViewSet(viewsets.ViewSet):
         videos = Video.objects.filter(
             deleted_at__isnull=True,
             status='approved'
-        ).select_related('user').order_by('-views')[:limit]
+        ).select_related('user').order_by('-views_count')[:limit]
         
         result = []
         for video in videos:
@@ -197,8 +210,8 @@ class StatisticsViewSet(viewsets.ViewSet):
                 'id': video.id,
                 'title': video.title,
                 'user_username': video.user.username,
-                'views': video.views,
-                'likes': video.likes,
+                'views': video.views_count,
+                'likes': video.likes_count,
                 'created_at': video.created_at.isoformat()
             })
         

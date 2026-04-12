@@ -141,6 +141,8 @@ dump.rdb
 
 # 模型测试图
 evaluation_results/
+ocr_eval_false_positives/
+whisper_eval_videos/
 
 
 # PaddleOCR 模型文件（如果放在项目中）

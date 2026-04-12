@@ -261,7 +261,7 @@ class UserManagementSerializer(serializers.ModelSerializer):
     def get_view_count(self, obj):
         """获取用户视频的总观看数"""
         from django.db.models import Sum
-        result = obj.videos.filter(deleted_at__isnull=True).aggregate(total_views=Sum('views'))
+        result = obj.videos.filter(deleted_at__isnull=True).aggregate(total_views=Sum('views_count'))
         return result['total_views'] or 0
     
     def get_comment_count(self, obj):

@@ -254,10 +254,10 @@ def main():
         else:
             print("  ⚠ Django 启动超时")
     
-    # 6. 启动前端
-    print("\n[6/6] 启动前端 (Vite)...")
-    frontend_cmd = "npm run dev"
-    pid = start_process("Frontend", frontend_cmd, cwd=frontend_dir)
+    # 6. 启动前端 (Electron 模式)
+    print("\n[6/6] 启动前端 (Electron)...")
+    frontend_cmd = "npm run electron:dev"
+    pid = start_process("Frontend (Electron)", frontend_cmd, cwd=frontend_dir)
     if pid:
         pids["frontend"] = pid
         time.sleep(2)  # 等待窗口出现

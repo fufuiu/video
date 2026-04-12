@@ -30,29 +30,38 @@ function createWindow() {
       // 如果 5173 被占用，vite 可能会跳到 5174
       mainWindow.loadURL('http://localhost:5174')
     })
-    // mainWindow.webContents.openDevTools() // 已注释掉自动开启
+    mainWindow.webContents.openDevTools() // 开发环境自动开启开发者工具
   } else {
     // 生产环境加载打包后的文件
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  // 注册快捷键
-  app.on('browser-window-focus', () => {
-    globalShortcut.register('F12', () => {
+  // 使用 before-input-event 处理窗口内快捷键，避免 globalShortcut 的焦点时序问题
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    const ctrl = input.control || input.meta
+    if (input.key === 'F12') {
       mainWindow?.webContents.toggleDevTools()
-    })
-    globalShortcut.register('F11', () => {
+      event.preventDefault()
+    } else if (input.key === 'F11') {
       if (mainWindow) {
-        const isFullScreen = mainWindow.isFullScreen()
-        mainWindow.setFullScreen(!isFullScreen)
+        mainWindow.setFullScreen(!mainWindow.isFullScreen())
       }
-    })
-    globalShortcut.register('CommandOrControl+R', () => {
+      event.preventDefault()
+    } else if (input.key === 'F5' || (ctrl && input.key === 'r')) {
       mainWindow?.reload()
-    })
-    globalShortcut.register('F5', () => {
-      mainWindow?.reload()
-    })
+      event.preventDefault()
+    } else if (ctrl && input.key === 'w') {
+      mainWindow?.hide()
+      event.preventDefault()
+    } else if (ctrl && input.key === 'q') {
+      app.exit(0)
+      event.preventDefault()
+    }
+  })
+
+  // globalShortcut 仅保留需要系统级响应的 Alt+Left/Right 导航
+  app.on('browser-window-focus', () => {
     globalShortcut.register('Alt+Left', () => {
       if (mainWindow?.webContents.canGoBack()) {
         mainWindow.webContents.goBack()
@@ -62,14 +71,6 @@ function createWindow() {
       if (mainWindow?.webContents.canGoForward()) {
         mainWindow.webContents.goForward()
       }
-    })
-    globalShortcut.register('CommandOrControl+W', () => {
-      if (mainWindow) {
-        mainWindow.hide(); // 改为隐藏窗口，而不是关闭
-      }
-    })
-    globalShortcut.register('CommandOrControl+Q', () => {
-      app.exit(0); // 强制退出 Electron，不触发 window-all-closed
     })
   })
 

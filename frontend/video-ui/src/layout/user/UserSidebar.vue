@@ -422,17 +422,19 @@ const logout = () => {
   height: 70px;
   display: flex;
   align-items: center;
+  justify-content: center;
   color: #2196f3;
   position: sticky;
   top: 0;
   left: 0;
   background: #ffffff;
   z-index: 500;
-  padding-left: 20px;
+  padding-left: 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   text-decoration: none;
   flex-shrink: 0;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
 }
 
 #sidebar.hide .brand {
