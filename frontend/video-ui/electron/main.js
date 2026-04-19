@@ -1,10 +1,10 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron')
+﻿const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron')
 const path = require('path')
 
-// 判断是否为开发环境
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWindow
+let isQuitting = false
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -12,9 +12,9 @@ function createWindow() {
     height: 900,
     minWidth: 1000,
     minHeight: 700,
-    frame: false, 
-    autoHideMenuBar: true, // 自动隐藏菜单栏
-    titleBarStyle: 'hidden', // 隐藏原生标题栏
+    frame: false,
+    autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -24,22 +24,20 @@ function createWindow() {
     icon: path.join(__dirname, '../public/icon.png')
   })
 
-  // 开发环境加载 vite 开发服务器
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173').catch(() => {
-      // 如果 5173 被占用，vite 可能会跳到 5174
       mainWindow.loadURL('http://localhost:5174')
     })
-    mainWindow.webContents.openDevTools() // 开发环境自动开启开发者工具
+    // 开发模式下不自动打开 DevTools，可以按 F12 手动打开
+    // mainWindow.webContents.openDevTools()
   } else {
-    // 生产环境加载打包后的文件
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  // 使用 before-input-event 处理窗口内快捷键，避免 globalShortcut 的焦点时序问题
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return
     const ctrl = input.control || input.meta
+
     if (input.key === 'F12') {
       mainWindow?.webContents.toggleDevTools()
       event.preventDefault()
@@ -54,13 +52,16 @@ function createWindow() {
     } else if (ctrl && input.key === 'w') {
       mainWindow?.hide()
       event.preventDefault()
+    } else if (ctrl && input.shift && input.key === 'q') {
+      isQuitting = true
+      app.quit()
+      event.preventDefault()
     } else if (ctrl && input.key === 'q') {
-      app.exit(0)
+      mainWindow?.hide()
       event.preventDefault()
     }
   })
 
-  // globalShortcut 仅保留需要系统级响应的 Alt+Left/Right 导航
   app.on('browser-window-focus', () => {
     globalShortcut.register('Alt+Left', () => {
       if (mainWindow?.webContents.canGoBack()) {
@@ -78,12 +79,18 @@ function createWindow() {
     globalShortcut.unregisterAll()
   })
 
+  // Keep app alive on close so dev services are not terminated implicitly.
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return
+    event.preventDefault()
+    mainWindow.hide()
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
 }
 
-// 窗口控制事件
 ipcMain.on('window-minimize', () => {
   mainWindow?.minimize()
 })
@@ -97,7 +104,7 @@ ipcMain.on('window-maximize', () => {
 })
 
 ipcMain.on('window-close', () => {
-  mainWindow?.hide() // 渲染进程调用的关闭也改为隐藏
+  mainWindow?.hide()
 })
 
 ipcMain.handle('window-is-maximized', () => {
@@ -108,7 +115,6 @@ ipcMain.handle('window-is-fullscreen', () => {
   return mainWindow?.isFullScreen()
 })
 
-// 导航控制
 ipcMain.on('nav-back', () => {
   if (mainWindow?.webContents.canGoBack()) {
     mainWindow.webContents.goBack()
@@ -133,14 +139,22 @@ app.whenReady().then(() => {
   createWindow()
 
   app.on('activate', () => {
+    if (mainWindow) {
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
+      return
+    }
+
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })
 })
 
+app.on('before-quit', () => {
+  isQuitting = true
+})
+
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  // Keep process alive on all platforms; explicit quit closes app.
 })

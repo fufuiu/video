@@ -3,6 +3,7 @@ const { app, BrowserWindow, ipcMain, globalShortcut } = require("electron");
 const path = require("path");
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 let mainWindow;
+let isQuitting = false;
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -11,9 +12,7 @@ function createWindow() {
     minHeight: 700,
     frame: false,
     autoHideMenuBar: true,
-    // 自动隐藏菜单栏
     titleBarStyle: "hidden",
-    // 隐藏原生标题栏
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -26,7 +25,6 @@ function createWindow() {
     mainWindow.loadURL("http://localhost:5173").catch(() => {
       mainWindow.loadURL("http://localhost:5174");
     });
-    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
@@ -47,8 +45,12 @@ function createWindow() {
     } else if (ctrl && input.key === "w") {
       mainWindow?.hide();
       event.preventDefault();
+    } else if (ctrl && input.shift && input.key === "q") {
+      isQuitting = true;
+      app.quit();
+      event.preventDefault();
     } else if (ctrl && input.key === "q") {
-      app.exit(0);
+      mainWindow?.hide();
       event.preventDefault();
     }
   });
@@ -66,6 +68,11 @@ function createWindow() {
   });
   app.on("browser-window-blur", () => {
     globalShortcut.unregisterAll();
+  });
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    mainWindow.hide();
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -109,13 +116,18 @@ ipcMain.handle("nav-can-go-forward", () => {
 app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => {
+    if (mainWindow) {
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+      return;
+    }
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
+app.on("before-quit", () => {
+  isQuitting = true;
+});
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
 });

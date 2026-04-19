@@ -111,7 +111,7 @@ def main():
     print("✓ 所有依赖已就绪\n")
     
     print("检查端口...")
-    ports_to_check = {"Django": 8000, "Frontend": 5173, "Flower": 5555}
+    ports_to_check = {"Django": 8000, "Frontend": 5173}
     port_conflict = False
     
     if check_port(6379):
@@ -156,16 +156,18 @@ def main():
 
     # 2. 启动 Celery Worker
     print("\n[2/5] 启动 Celery Worker...")
-    # Windows 使用 solo 池，Linux/Mac 使用 prefork 池
+    # Windows 使用 gevent 池（多线程），Linux/Mac 使用 prefork 池
+    # 添加 --events 参数以支持 Flower 监控
     if system == "Windows":
-        celery_cmd = f"{venv_celery} -A video worker -l info --pool=solo"
+        celery_cmd = f"{venv_celery} -A video worker -l info --pool=gevent --concurrency=10 --events"
     else:
         celery_cmd = (
             f"{venv_celery} -A video worker -l info "
             "--pool=prefork "
             "--concurrency=2 "
             "--max-tasks-per-child=10 "
-            "--max-memory-per-child=500000"
+            "--max-memory-per-child=500000 "
+            "--events"
         )
     pid = start_process("Celery Worker", celery_cmd, cwd=backend_dir)
     if pid:
@@ -230,20 +232,8 @@ def main():
     else:
         print("  ✗ Celery Beat 启动失败")
     
-    # 4. 启动 Flower (Celery 监控)
-    print("\n[4/6] 启动 Flower (Celery 监控)...")
-    flower_cmd = f"{venv_celery} -A video flower --port=5555 --address=127.0.0.1"
-    pid = start_process("Flower", flower_cmd, cwd=backend_dir)
-    if pid:
-        pids["flower"] = pid
-        print("  等待 Flower 启动...")
-        if wait_for_port(5555, timeout=10):
-            print("  ✓ Flower 已就绪")
-        else:
-            print("  ⚠ Flower 启动超时")
-    
-    # 5. 启动 Django (Uvicorn)
-    print("\n[5/6] 启动 Django (Uvicorn)...")
+    # 4. 启动 Django (Uvicorn)
+    print("\n[4/5] 启动 Django (Uvicorn)...")
     django_cmd = f"{venv_python} -m uvicorn video.asgi:application --host 127.0.0.1 --port 8000 --ws websockets"
     pid = start_process("Django", django_cmd, cwd=backend_dir)
     if pid:
@@ -254,8 +244,8 @@ def main():
         else:
             print("  ⚠ Django 启动超时")
     
-    # 6. 启动前端 (Electron 模式)
-    print("\n[6/6] 启动前端 (Electron)...")
+    # 5. 启动前端 (Electron 模式)
+    print("\n[5/5] 启动前端 (Electron)...")
     frontend_cmd = "npm run electron:dev"
     pid = start_process("Frontend (Electron)", frontend_cmd, cwd=frontend_dir)
     if pid:
@@ -268,7 +258,6 @@ def main():
     print_header("所有服务已启动！")
     print("后端地址: http://localhost:8000")
     print("前端地址: http://localhost:5173")
-    print("Flower 监控: http://localhost:5555")
     print(f"\nPID 已保存到: {PID_FILE}")
     print("停止服务: python stop_dev.py\n")
 

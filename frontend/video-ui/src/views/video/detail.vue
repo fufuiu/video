@@ -694,7 +694,7 @@ const initPlayer = (hlsUrl, posterUrl) => {
     volume: 0.7, autoplay: true, pip: true, screenshot: true, setting: true,
     playbackRate: true, aspectRatio: true, fullscreen: true, fullscreenWeb: true,
     miniProgressBar: true, mutex: true, backdrop: true, playsInline: true,
-    autoPlayback: false, theme: '#FB7299', lang: 'zh-cn',
+    autoPlayback: false, theme: '#00a1d6', lang: 'zh-cn',
     moreVideoAttr: { crossOrigin: 'anonymous' },
     notice: { show: false },
     customType: {
@@ -779,6 +779,23 @@ const initPlayer = (hlsUrl, posterUrl) => {
   });
   
   art.on('ready', () => {
+    // 强制修改进度条颜色为蓝色
+    const style = document.createElement('style');
+    style.textContent = `
+      .art-video-player .art-progress-hover,
+      .art-video-player .art-progress-played {
+        background: #00a1d6 !important;
+      }
+      .art-video-player .art-progress-indicator {
+        background: #00a1d6 !important;
+        border-color: #00a1d6 !important;
+      }
+      .art-video-player .art-progress-tip {
+        background: #00a1d6 !important;
+      }
+    `;
+    document.head.appendChild(style);
+    
     const key = `artplayer_${videoId.value}`;
     const saved = localStorage.getItem(key);
     if (saved) {
@@ -1793,6 +1810,7 @@ onBeforeUnmount(() => {
   opacity: 0;
   transform: translateX(-50%) translateY(-10px);
 }
+/* 进度条样式 - 蓝色主题 */
 :deep(.art-progress-hover),
 :deep(.art-progress-played) {
   background: #00a1d6 !important;
@@ -1801,6 +1819,18 @@ onBeforeUnmount(() => {
 :deep(.art-progress-indicator) {
   background: #00a1d6 !important;
   border-color: #00a1d6 !important;
+}
+
+:deep(.art-progress-tip) {
+  background: #00a1d6 !important;
+}
+
+:deep(.art-control-progress) {
+  --art-theme: #00a1d6 !important;
+}
+
+:deep(.art-video-player[data-theme]) {
+  --art-theme: #00a1d6 !important;
 }
 
 
@@ -1876,6 +1906,7 @@ onBeforeUnmount(() => {
 /* 弹幕模块整体样式 */
 .artplayer-plugin-danmuku {
   margin-bottom: 9px;
+  margin-right: 12px;
   gap: 12px !important;
 }
 
@@ -1910,6 +1941,7 @@ onBeforeUnmount(() => {
   gap: 8px !important;
   height: 40px !important;
   min-width: 380px !important;
+  max-width: calc(100% - 200px) !important;
   transition: all 0.3s ease !important;
 }
 
@@ -2052,5 +2084,24 @@ onBeforeUnmount(() => {
 
 .artplayer-plugin-danmuku .apd-modes .apd-mode:hover {
   background: rgba(0, 161, 214, 0.1) !important;
+}
+
+/* 播放器进度条样式 - 蓝色主题 */
+.art-video-player .art-progress-hover,
+.art-video-player .art-progress-played {
+  background: #00a1d6 !important;
+}
+
+.art-video-player .art-progress-indicator {
+  background: #00a1d6 !important;
+  border-color: #00a1d6 !important;
+}
+
+.art-video-player .art-progress-tip {
+  background: #00a1d6 !important;
+}
+
+.art-video-player .art-control-progress {
+  --art-theme: #00a1d6 !important;
 }
 </style>
