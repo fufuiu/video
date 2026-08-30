@@ -7,6 +7,12 @@ import time
 
 PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dev_pids.json")
 
+# Windows 控制台默认 GBK 编码，无法输出 ✓/⚠ 等 Unicode 字符，会导致 UnicodeEncodeError
+# 统一使用 UTF-8 输出，且遇到无法编码的字符时用 ? 替代而非崩溃
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 try:
     import psutil
     HAS_PSUTIL = True
