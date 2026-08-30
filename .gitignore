@@ -94,6 +94,7 @@ yarn-error.log*
 
 # 前端构建产物
 dist/
+dist-electron/
 build/
 .cache/
 .parcel-cache/
