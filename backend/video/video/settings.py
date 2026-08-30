@@ -13,9 +13,18 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 from pathlib import Path
 import os
 from datetime import timedelta
+from urllib.parse import urlsplit, urlunsplit
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load local development settings from the ignored project-root .env file.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BASE_DIR.parent.parent / '.env')
+except ImportError:
+    pass
 
 
 # Quick-start development settings - unsuitable for production
@@ -88,6 +97,18 @@ WSGI_APPLICATION = "video.wsgi.application"
 ASGI_APPLICATION = "video.asgi.application"
 
 # Channels 配置（使用 Redis 作为 Channel Layer）
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+
+
+def _redis_url_for_db(url, db):
+    parsed = urlsplit(url)
+    return urlunsplit((parsed.scheme, parsed.netloc, f'/{db}', parsed.query, parsed.fragment))
+
+
+REDIS_CACHE_URL = os.environ.get('REDIS_CACHE_URL', _redis_url_for_db(REDIS_URL, 1))
+REDIS_CHANNEL_URL = os.environ.get('REDIS_CHANNEL_URL', _redis_url_for_db(REDIS_URL, 2))
+
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -98,17 +119,20 @@ CHANNEL_LAYERS = {
 }
 
 
+CHANNEL_LAYERS["default"]["CONFIG"]["hosts"] = [REDIS_CHANNEL_URL]
+
+
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": "video_platform",
-        "USER": "root",
-        "PASSWORD": "123456",  
-        "HOST": "localhost",
-        "PORT": "3306",
+        "NAME": os.environ.get("MYSQL_DATABASE", "video_platform"),
+        "USER": os.environ.get("MYSQL_USER", "root"),
+        "PASSWORD": os.environ.get("MYSQL_PASSWORD", ""),
+        "HOST": os.environ.get("MYSQL_HOST", "localhost"),
+        "PORT": os.environ.get("MYSQL_PORT", "3306"),
         "OPTIONS": {
             "charset": "utf8mb4",
         },
@@ -240,8 +264,8 @@ CORS_EXPOSE_HEADERS = [
 ]
 
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL)
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', REDIS_URL)
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -264,7 +288,7 @@ CELERY_WORKER_TASK_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s][%(
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://localhost:6379/1', 
+        'LOCATION': REDIS_CACHE_URL,
         'KEY_PREFIX': 'video_web',
         'TIMEOUT': 3600,  # 默认缓存超时时间（秒）
     }

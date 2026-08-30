@@ -6,9 +6,16 @@ import subprocess
 import platform
 import shutil
 import json
+from urllib.parse import urlparse
 
 
 PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dev_pids.json")
+
+# Windows 控制台默认 GBK 编码，无法输出 ✓/⚠ 等 Unicode 字符，会导致 UnicodeEncodeError
+# 统一使用 UTF-8 输出，且遇到无法编码的字符时用 ? 替代而非崩溃
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def check_dependency(name, command):
@@ -25,6 +32,47 @@ def check_port(port, host="127.0.0.1"):
         s.settimeout(1)
         result = s.connect_ex((host, port))
         return result == 0  # True = 被占用
+
+
+def load_env_file(root_dir):
+    """加载项目根目录的本地 .env，已存在的系统环境变量优先。"""
+    env_path = os.path.join(root_dir, ".env")
+    if not os.path.exists(env_path):
+        return
+
+    with open(env_path, "r", encoding="utf-8") as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("\"'")
+            if key:
+                os.environ.setdefault(key, value)
+
+
+def get_redis_endpoint():
+    """读取 Redis URL，支持远程 Redis；未配置时回退到本机默认地址。"""
+    redis_url = os.environ.get("REDIS_URL") or os.environ.get("CELERY_BROKER_URL")
+    if not redis_url:
+        return {
+            "url": "redis://127.0.0.1:6379/0",
+            "host": "127.0.0.1",
+            "port": 6379,
+            "remote": False,
+        }
+
+    parsed = urlparse(redis_url)
+    if parsed.scheme not in ("redis", "rediss") or not parsed.hostname:
+        raise ValueError("REDIS_URL/CELERY_BROKER_URL 必须是有效的 redis:// 或 rediss:// 地址")
+
+    return {
+        "url": redis_url,
+        "host": parsed.hostname,
+        "port": parsed.port or 6379,
+        "remote": parsed.hostname not in ("127.0.0.1", "localhost", "::1"),
+    }
 
 
 def wait_for_port(port, timeout=30, check_interval=0.5):
@@ -91,6 +139,7 @@ def main():
     print_header("启动视频平台开发环境")
     
     root_dir = os.path.dirname(os.path.abspath(__file__))
+    load_env_file(root_dir)
     backend_dir = os.path.join(root_dir, "backend", "video")
     frontend_dir = os.path.join(root_dir, "frontend", "video-ui")
     
@@ -101,7 +150,7 @@ def main():
     # 检查依赖
     print("检查依赖...")
     deps_ok = True
-    deps_ok &= check_dependency("Redis", "redis-server")
+    redis_endpoint = get_redis_endpoint()
     deps_ok &= check_dependency("Node.js", "npm")
     deps_ok &= check_dependency("Python", "python")
     
@@ -114,7 +163,7 @@ def main():
     ports_to_check = {"Django": 8000, "Frontend": 5173}
     port_conflict = False
     
-    if check_port(6379):
+    if check_port(redis_endpoint["port"], redis_endpoint["host"]):
         print("  ✓ 端口 6379 (Redis) 已在运行")
     else:
         print("  - 端口 6379 (Redis) 未运行，稍后启动")
@@ -134,11 +183,21 @@ def main():
     pids = {}
     
     print("[1/4] 检查 Redis...")
-    if check_port(6379):
+    if redis_endpoint["remote"]:
+        if not check_port(redis_endpoint["port"], redis_endpoint["host"]):
+            print("  Redis 远程地址无法连接，请检查 REDIS_URL")
+            sys.exit(1)
+        print("  Redis 远程服务已连接")
+        pids["redis"] = None
+    elif check_port(6379):
         print("  ✓ Redis 已在运行（系统服务）")
         pids["redis"] = None  
     else:
         print("  Redis 未运行，尝试启动...")
+        if not check_dependency("本机 Redis", "redis-server"):
+            print("  Redis 未运行，且未配置远程 REDIS_URL")
+            sys.exit(1)
+
         pid = start_process("Redis", "redis-server")
         if pid:
             pids["redis"] = pid
