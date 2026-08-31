@@ -24,6 +24,7 @@ from rest_framework_simplejwt.views import (
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
+from core.health import live, ready
 
 # API文档配置
 schema_view = get_schema_view(
@@ -41,6 +42,10 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # 运维探针：存活只检查进程，就绪检查数据库和缓存
+    path('api/health/live/', live, name='health-live'),
+    path('api/health/ready/', ready, name='health-ready'),
     
     # API认证
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),

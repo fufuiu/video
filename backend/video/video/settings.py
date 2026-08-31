@@ -27,6 +27,15 @@ except ImportError:
     pass
 
 
+def _env_int(name, default):
+    """读取整数配置，并在配置错误时快速失败。"""
+    value = os.environ.get(name, str(default))
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f'{name} 必须是整数') from exc
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
@@ -135,6 +144,7 @@ DATABASES = {
         "PORT": os.environ.get("MYSQL_PORT", "3306"),
         "OPTIONS": {
             "charset": "utf8mb4",
+            "connect_timeout": _env_int('MYSQL_CONNECT_TIMEOUT', 5),
         },
     }
 }
@@ -290,6 +300,10 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': REDIS_CACHE_URL,
         'KEY_PREFIX': 'video_web',
+        'OPTIONS': {
+            'SOCKET_CONNECT_TIMEOUT': _env_int('REDIS_SOCKET_CONNECT_TIMEOUT', 5),
+            'SOCKET_TIMEOUT': _env_int('REDIS_SOCKET_TIMEOUT', 5),
+        },
         'TIMEOUT': 3600,  # 默认缓存超时时间（秒）
     }
 }
