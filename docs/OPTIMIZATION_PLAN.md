@@ -440,3 +440,39 @@ UI 优化是正式方向，但在错误协议和核心交互状态稳定后实�
 - 每个阶段先补最小测试，再实施，再执行构建和回归；
 - 未达到本阶段验收标准时，不用“功能看起来能用”代替完成结论；
 - 每阶段结束后更新本文件中的状态、验证命令、结果和遗留风险。
+
+## 12. 阶段执行记录
+
+### 12.1 阶段 1 第一批：已完成（2026-08-31）
+
+本批次对应提交：
+
+- `52b1c18 feat: standardize api errors and request tracing`
+- `24119e2 refactor(frontend): route video requests through shared client`
+
+已完成内容：
+
+- 增加 DRF 全局异常处理器和 API 错误响应信封；
+- 对主 API 的历史 `detail/error/message/字段错误` 响应做兼容规范化；
+- 增加请求 ID，并通过 `X-Request-ID` 返回；
+- 操作日志写入失败改用正式 logger，同时关联 request ID；
+- 前端公共 Axios 层增加 `AppError` 字段、网络/超时错误归一化和安全的 401 刷新重试；
+- 播放页和管理员审核页迁移到公共请求客户端；
+- 增加统一错误、未知异常脱敏和 request ID 测试。
+
+验证结果：
+
+- `backend/venv/Scripts/python.exe manage.py check` 通过；
+- `backend/venv/Scripts/python.exe manage.py test core`：7 个测试通过；
+- `npm run build` 通过，仅保留既有大 chunk 警告；
+- Git 工作区在提交后恢复干净。
+
+### 12.2 阶段 1 剩余工作：未完成
+
+- 迁移其余低频页面的直接请求和硬编码 API 地址；
+- 为错误码建立按模块维护的目录，替换目前按 HTTP 状态码推断的通用 code；
+- 补充认证、权限、上传、发布和任务状态的前后端测试；
+- 确认 Django 非 DRF 的异常响应也能返回安全结构；
+- 在真实数据库权限可用后执行全量测试，解决 `test_video_dev` 的 MySQL 1044 阻塞。
+
+在上述剩余工作完成前，阶段 1 只能标记为“第一批完成”，不能标记为整体完成。
