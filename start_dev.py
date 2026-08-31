@@ -7,6 +7,8 @@ import platform
 import shutil
 import json
 from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 
 PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dev_pids.json")
@@ -83,6 +85,25 @@ def wait_for_port(port, timeout=30, check_interval=0.5):
             return True
         time.sleep(check_interval)
     return False
+
+
+def wait_for_http(url, timeout=30, check_interval=0.5):
+    """等待 HTTP 探针返回 2xx，并返回最后一次失败原因。"""
+    deadline = time.time() + timeout
+    last_error = "未收到响应"
+    while time.time() < deadline:
+        try:
+            request = Request(url, method="GET")
+            with urlopen(request, timeout=2) as response:
+                if 200 <= response.status < 300:
+                    return True, None
+                last_error = f"HTTP {response.status}"
+        except HTTPError as exc:
+            last_error = f"HTTP {exc.code}"
+        except (URLError, TimeoutError, OSError) as exc:
+            last_error = type(exc).__name__
+        time.sleep(check_interval)
+    return False, last_error
 
 
 def print_header(text):
@@ -299,7 +320,12 @@ def main():
         pids["django"] = pid
         print("  等待 Django 启动...")
         if wait_for_port(8000, timeout=15):
-            print("  ✓ Django 已就绪")
+            ready_url = "http://127.0.0.1:8000/api/health/ready/"
+            is_ready, error = wait_for_http(ready_url, timeout=20)
+            if is_ready:
+                print("  ✓ Django 已就绪（端口和依赖检查通过）")
+            else:
+                print(f"  ⚠ Django 端口已打开，但就绪检查超时（{error}）")
         else:
             print("  ⚠ Django 启动超时")
     
@@ -309,8 +335,10 @@ def main():
     pid = start_process("Frontend (Electron)", frontend_cmd, cwd=frontend_dir)
     if pid:
         pids["frontend"] = pid
-        time.sleep(2)  # 等待窗口出现
-        print("  ✓ 前端已启动，浏览器将自动打开")
+        if wait_for_port(5173, timeout=20):
+            print("  ✓ 前端端口已就绪，浏览器将自动打开")
+        else:
+            print("  ⚠ 前端端口启动超时")
     
     save_pids(pids)
     
