@@ -1,0 +1,737 @@
+<template>
+  <div class="subtitle-list-container">
+    <!-- 顶部工具栏 -->
+    <div class="subtitle-toolbar">
+      <div class="toolbar-left">
+        <span class="label">显示</span>
+        <div class="tab-btn active">双字幕</div>
+        <div class="tab-btn">主字幕</div>
+        <div class="tab-btn">副字幕</div>
+        <button class="swap-btn" @click="handleSwapSubtitles" title="交换主副字幕">
+          <el-icon><Sort /></el-icon>
+        </button>
+      </div>
+      <div class="toolbar-right">
+        <span class="label">翻译:</span>
+        <el-select v-model="translateLang" size="small" class="lang-select">
+          <el-option label="中文" value="zh" />
+          <el-option label="英语" value="en" />
+          <el-option label="日语" value="ja" />
+          <el-option label="韩语" value="ko" />
+          <el-option label="法语" value="fr" />
+          <el-option label="德语" value="de" />
+          <el-option label="西班牙语" value="es" />
+          <el-option label="俄语" value="ru" />
+        </el-select>
+        <el-button 
+          type="danger" 
+          size="small" 
+          class="start-btn"
+          :loading="isTranslating"
+          :disabled="isTranslating"
+          @click="handleStartTranslate"
+        >
+          {{ isTranslating ? '翻译中...' : '开始' }}
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 字幕列表区域 -->
+    <div class="subtitle-list-wrapper" :class="{ 'translating': isTranslating }">
+      <!-- 字幕内容列表 -->
+      <div class="subtitle-content-list">
+        <div v-if="!subtitles || subtitles.length === 0" class="subtitle-empty">
+          <div class="empty-title">暂无字幕</div>
+          <div class="empty-desc">请先导入字幕文件，或在视频中添加字幕后再编辑</div>
+        </div>
+        <div
+          v-for="(subtitle, index) in subtitles"
+          :key="index"
+          class="subtitle-item"
+          :class="{ active: currentSubtitleIndex === index }"
+          @click="$emit('select-subtitle', index)"
+        >
+          <!-- 最左侧：操作按钮 -->
+          <div class="item-actions">
+            <el-icon @click.stop="handleDelete(index)" title="删除"><Delete /></el-icon>
+            <el-icon @click.stop="handleMerge(index)" title="合并"><Bottom /></el-icon>
+            <el-icon @click.stop="handleAdd(index)" title="插入"><Plus /></el-icon>
+          </div>
+
+          <!-- 中间：时间信息区 -->
+          <div class="item-time">
+            <div class="time-row">
+              <el-icon class="time-icon"><Top /></el-icon>
+              <div class="time-value">{{ formatTime(subtitle.startTime) }}</div>
+            </div>
+            <div class="time-row">
+              <el-icon class="time-icon"><Bottom /></el-icon>
+              <div class="time-value">{{ formatTime(subtitle.endTime) }}</div>
+            </div>
+            <div class="time-row">
+              <el-icon class="time-icon"><Timer /></el-icon>
+              <div class="duration-value">{{ (subtitle.endTime - subtitle.startTime).toFixed(1) }}</div>
+            </div>
+            <div class="time-row">
+              <span class="index-icon">#</span>
+              <div class="item-index">{{ index }}</div>
+            </div>
+          </div>
+
+          <!-- 右侧：字幕内容区 -->
+          <div class="item-content">
+            <div
+              class="text-primary"
+              contenteditable="true"
+              spellcheck="false"
+              @click.stop
+              @mousedown.stop
+              @blur="updateSubtitleText(subtitle, 'text', $event)"
+              @keydown.enter.prevent="$event.target.blur()"
+            >{{ subtitle.text }}</div>
+            <div
+              class="text-secondary"
+              contenteditable="true"
+              spellcheck="false"
+              @click.stop
+              @mousedown.stop
+              @blur="updateSubtitleText(subtitle, 'translation', $event)"
+              @keydown.enter.prevent="$event.target.blur()"
+            >{{ subtitle.translation }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, watch, nextTick } from 'vue'
+import { Delete, Bottom, Plus, Top, Timer, Sort } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { translateSubtitles } from '@/api/video'
+
+const props = defineProps({
+  subtitles: {
+    type: Array,
+    default: () => []
+  },
+  currentSubtitleIndex: {
+    type: Number,
+    default: 0
+  },
+  videoId: {
+    type: [Number, String],
+    required: true
+  }
+})
+
+const emit = defineEmits([
+  'select-subtitle',
+  'add-subtitle',
+  'merge-subtitle',
+  'delete-subtitle',
+  'swap-subtitles',
+  'update-subtitles'
+])
+
+const translateLang = ref('en')
+const isTranslating = ref(false)
+
+// 开始翻译
+const handleStartTranslate = async () => {
+  if (!props.videoId) {
+    ElMessage.error('视频ID不存在')
+    return
+  }
+
+  if (!props.subtitles || props.subtitles.length === 0) {
+    ElMessage.warning('暂无字幕可翻译')
+    return
+  }
+
+  // 检查是否有主字幕内容
+  const hasMainSubtitle = props.subtitles.some(sub => sub.text && sub.text.trim())
+  if (!hasMainSubtitle) {
+    ElMessage.warning('请先生成主字幕')
+    return
+  }
+
+  if (isTranslating.value) {
+    ElMessage.warning('正在翻译中，请稍候...')
+    return
+  }
+
+  const languageMap = {
+    'zh': '中文',
+    'en': '英文',
+    'ja': '日语',
+    'ko': '韩语',
+    'fr': '法语',
+    'de': '德语',
+    'es': '西班牙语',
+    'ru': '俄语'
+  }
+
+  const targetLangName = languageMap[translateLang.value] || '英文'
+
+  isTranslating.value = true
+  ElMessage.info(`正在翻译成${targetLangName}，请稍候...`)
+
+  try {
+    const response = await translateSubtitles(props.videoId, translateLang.value)
+    
+    console.log('翻译响应:', response)
+    
+    if (response && response.subtitles) {
+      emit('update-subtitles', response.subtitles)
+      ElMessage.success(`字幕翻译成功！已翻译为${targetLangName}`)
+    } else {
+      console.error('翻译响应格式错误:', response)
+      ElMessage.warning('翻译完成，但未返回字幕数据')
+    }
+  } catch (error) {
+    console.error('翻译字幕失败:', error)
+    ElMessage.error(error.response?.data?.error || '翻译失败，请稍后重试')
+  } finally {
+    isTranslating.value = false
+  }
+}
+
+const updateSubtitleText = (subtitle, field, event) => {
+  if (!subtitle || !field) return
+  const value = event?.target?.innerText ?? ''
+  subtitle[field] = value.replace(/\r\n/g, '\n')
+}
+
+// 监听当前字幕索引变化，自动滚动到顶部
+watch(() => props.currentSubtitleIndex, (newIndex) => {
+  nextTick(() => {
+    const listContainer = document.querySelector('.subtitle-content-list')
+    const subtitleItems = document.querySelectorAll('.subtitle-item')
+    
+    if (listContainer && subtitleItems.length > 0 && newIndex >= 0 && newIndex < subtitleItems.length) {
+      const activeItem = subtitleItems[newIndex]
+      const scrollTop = newIndex * 90
+      listContainer.scrollTo({
+        top: scrollTop,
+        behavior: 'smooth'
+      })
+    }
+  })
+})
+
+const formatTime = (seconds) => {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const ms = Math.floor((seconds % 1) * 1000)
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`
+}
+
+const handleAdd = (index) => {
+  emit('add-subtitle', index)
+}
+
+const handleMerge = (index) => {
+  emit('merge-subtitle', index)
+}
+
+const handleDelete = (index) => {
+  emit('delete-subtitle', index)
+}
+
+const handleSwapSubtitles = () => {
+  emit('swap-subtitles')
+}
+</script>
+
+<style scoped lang="scss">
+.subtitle-list-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+}
+
+.subtitle-toolbar {
+  height: 30px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  flex-shrink: 0;
+
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 0;
+
+    .label {
+      color: #999;
+      font-size: 14px;
+      margin-right: 12px;
+    }
+
+    .tab-btn {
+      padding: 3px 12px;
+      background: #2a2a2a;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      color: #999;
+      transition: all 0.2s;
+      user-select: none;
+      position: relative;
+
+      &:first-of-type {
+        border-radius: 6px 0 0 6px;
+      }
+
+      &:nth-of-type(3) {
+        border-radius: 0 6px 6px 0;
+      }
+
+      &:hover {
+        background: #3a3a3a;
+        color: #fff;
+      }
+
+      &.active {
+        background: #c72626;
+        color: #fff;
+      }
+
+      & + .tab-btn {
+        border-left: 1px solid #1a1a1a;
+      }
+    }
+
+    .swap-btn {
+      margin-left: 12px;
+      padding: 3px 12px;
+      background: #2a2a2a;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #999;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      .el-icon {
+        font-size: 18px;
+      }
+
+      &:hover {
+        background: #3a3a3a;
+        color: #fff;
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+    }
+  }
+
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .label {
+      color: #999;
+      font-size: 13px;
+    }
+
+    .lang-select {
+      width: 140px;
+      --el-fill-color-blank: #2a2a2a;
+      --el-border-color: #3a3a3a;
+      --el-border-color-hover: #4a4a4a;
+      --el-text-color-regular: #fff;
+      --el-text-color-placeholder: #999;
+      
+      :deep(.el-input) {
+        --el-input-bg-color: #2a2a2a;
+        --el-input-border-color: #3a3a3a;
+        --el-input-hover-border-color: #4a4a4a;
+        --el-input-focus-border-color: #6b46c1;
+        --el-input-text-color: #fff;
+        --el-input-placeholder-color: #999;
+      }
+      
+      :deep(.el-select__wrapper) {
+        background-color: #2a2a2a !important;
+        border: 1px solid #3a3a3a !important;
+        box-shadow: none !important;
+      }
+      
+      :deep(.el-input__wrapper) {
+        background-color: #2a2a2a !important;
+        border: 1px solid #3a3a3a !important;
+        box-shadow: none !important;
+
+        &:hover {
+          border-color: #4a4a4a !important;
+        }
+        
+        &.is-focus {
+          border-color: #6b46c1 !important;
+          box-shadow: 0 0 0 1px rgba(107, 70, 193, 0.2) !important;
+        }
+      }
+      
+      :deep(.el-input__inner) {
+        color: #fff !important;
+        background-color: transparent !important;
+      }
+      
+      :deep(.el-select__caret) {
+        color: #999 !important;
+      }
+      
+      :deep(.el-select__placeholder) {
+        color: #999 !important;
+      }
+      
+      :deep(.el-select__selected-item) {
+        color: #fff !important;
+      }
+    }
+
+    .start-btn {
+      background: #c72626;
+      border-color: #c72626;
+      color: #fff;
+      padding: 8px 24px;
+      font-weight: 500;
+
+      &:hover {
+        background: #d73636;
+        border-color: #d73636;
+      }
+    }
+  }
+}
+
+.subtitle-list-wrapper {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+
+  &.translating {
+    pointer-events: none;
+    opacity: 0.6;
+    
+    &::after {
+      content: '翻译中...';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      z-index: 10;
+      pointer-events: none;
+    }
+  }
+}
+
+.subtitle-content-list {
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  background: #000;
+
+  .subtitle-empty {
+    padding: 24px 16px;
+    color: #999;
+
+    .empty-title {
+      font-size: 14px;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .empty-desc {
+      font-size: 13px;
+      color: #999;
+      line-height: 1.6;
+    }
+  }
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #0a0a0a;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #3a3a3a;
+    border-radius: 4px;
+
+    &:hover {
+      background: #4a4a4a;
+    }
+  }
+
+  .subtitle-item {
+    display: flex;
+    border-bottom: 1px solid #1a1a2a;
+    height: 90px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #000;
+
+    &:hover {
+      background: #0a0a0a;
+    }
+
+    &.active {
+      .item-actions {
+        background: rgba(86, 42, 178, 1);
+      }
+
+      .item-time {
+        background: rgba(86, 42, 178, 1);
+      }
+
+      .item-content {
+        background: rgba(86, 42, 178, 0.6);
+      }
+    }
+
+    .item-actions {
+      width: 35px;
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 4px 0;
+      flex-shrink: 0;
+      transition: all 0.2s;
+
+      .el-icon {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 16px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.25);
+          transform: scale(1.05);
+        }
+
+        &:active {
+          transform: scale(0.95);
+        }
+      }
+    }
+
+    .item-time {
+      max-width: 110px;
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 6px 12px;
+      gap: 2px;
+      flex-shrink: 0;
+      border-left: 0.1px solid #2a2a2a;
+      transition: all 0.2s;
+
+      .time-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        line-height: 1.4;
+        font-size: 14px;
+        color: white;
+
+        .time-icon {
+          width: 16px;
+          height: 16px;
+          flex-shrink: 0;
+        }
+
+        .index-icon {
+          width: 16px;
+          height: 16px;
+          font-weight: 700;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .time-value {
+          letter-spacing: 0.3px;
+        }
+      }
+    }
+
+    .item-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #1a1a1a;
+      transition: all 0.2s;
+
+      .text-primary[contenteditable='true'],
+      .text-secondary[contenteditable='true'] {
+        outline: none;
+        cursor: text;
+      }
+
+      .text-primary {
+        flex: 1;
+        height: 45px;
+        color: #fff;
+        font-size: 14px;
+        line-height: 1.4;
+        padding: 6px 12px;
+        display: flex;
+        align-items: center;
+        border-top: 1px solid #2a2a3a;
+      }
+
+      .text-secondary {
+        flex: 1;
+        height: 45px;
+        color: #888;
+        font-size: 12px;
+        line-height: 1.4;
+        padding: 6px 12px;
+        display: flex;
+        align-items: center;
+        border-top: 1px solid #2a2a3a;
+
+      }
+    }
+  }
+}
+
+// Element Plus 样式覆盖
+:deep(.el-input__wrapper) {
+  background: #2a2a2a !important;
+  border: 1px solid #3a3a3a !important;
+  box-shadow: none !important;
+
+  &:hover {
+    border-color: #4a4a4a !important;
+  }
+  
+  &.is-focus {
+    border-color: #6b46c1 !important;
+  }
+}
+
+:deep(.el-input__inner) {
+  color: #fff !important;
+}
+
+:deep(.el-select) {
+  .el-input__wrapper {
+    background: #2a2a2a !important;
+    border: 1px solid #3a3a3a !important;
+  }
+  
+  .el-input__inner {
+    color: #fff !important;
+  }
+  
+  .el-select__caret {
+    color: #999 !important;
+  }
+  
+  &.is-focus {
+    .el-input__wrapper {
+      border-color: #6b46c1 !important;
+    }
+  }
+}
+
+:deep(.el-button) {
+  &.start-btn {
+    background: #c72626 !important;
+    border-color: #c72626 !important;
+    
+    &:hover {
+      background: #d73636 !important;
+      border-color: #d73636 !important;
+    }
+  }
+}
+</style>
+
+<style lang="scss">
+// 全局样式 - 下拉菜单（因为通过 teleport 挂载到 body）
+.el-select-dropdown {
+  background: #2a2a2a !important;
+  border: 1px solid #3a3a3a !important;
+  border-radius: 8px !important;
+  padding: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+  
+  .el-select-dropdown__wrap {
+    background: #2a2a2a !important;
+  }
+  
+  .el-scrollbar__view {
+    background: #2a2a2a !important;
+  }
+  
+  .el-select-dropdown__item {
+    color: #ccc !important;
+    background: transparent !important;
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    margin: 4px 0 !important;
+    transition: all 0.2s !important;
+    border: 2px solid transparent !important;
+    box-sizing: border-box !important;
+    height: auto !important;
+    min-height: 32px !important;
+    line-height: 20px !important;
+    display: flex !important;
+    align-items: center !important;
+
+    &:hover,
+    &.hover {
+      background: #3a3a3a !important;
+      color: #fff !important;
+    }
+
+    &.selected {
+      color: #fff !important;
+      background: #2a2a2a !important;
+      border: 2px solid #6b46c1 !important;
+      font-weight: 500;
+    }
+    
+    &.is-hovering {
+      background: #3a3a3a !important;
+    }
+  }
+}
+</style>

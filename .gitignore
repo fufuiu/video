@@ -1,0 +1,162 @@
+# ==================== IDE ====================
+.cursor/
+.vscode/
+.kiro/
+.idea/
+# .windsurf/
+*.code-workspace
+.windsurfrules
+
+# ==================== 敏感信息 ====================
+# 密码文件
+密码.txt
+*.txt.secret
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# Django 本地配置（重要！）
+**/settings_local.py
+settings_local.py
+local_settings.py
+
+# 日志文件
+*.log
+*.log.*
+# 保留 logs 目录结构，但忽略日志文件内容
+backend/video/logs/*.log
+!backend/video/logs/.gitkeep
+
+# ==================== Python ====================
+# 字节码
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+virtualenv/
+
+# 打包文件
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# ==================== Django ====================
+# 数据库
+*.sqlite3
+db.sqlite3
+*.db
+
+# 媒体文件（用户上传的内容）
+/media/
+backend/video/media/
+**/media/videos/
+**/media/thumbnails/
+**/media/ai_moderation/
+**/media/temp/
+image/
+
+# HLS 视频分片文件（重要！会导致 IDE 索引缓慢）
+**/media/videos/hls/
+**/media/videos/uploads/
+**/media/videos/processed/
+**/media/temp/chunks/
+
+# 静态文件（收集后的）
+/staticfiles/
+/static/
+backend/video/static/
+
+# ==================== Node.js ====================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 前端构建产物
+dist/
+dist-electron/
+build/
+.cache/
+.parcel-cache/
+
+# ==================== 操作系统 ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ==================== 编辑器临时文件 ====================
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+*.orig
+
+
+# ==================== 其他 ====================
+# Celery
+celerybeat-schedule
+celerybeat-schedule.dat
+celerybeat-schedule.bak
+celerybeat-schedule.dir
+celerybeat.pid
+
+# Redis dump
+dump.rdb
+
+# 备份文件
+*.backup
+*.old
+*backups
+
+# 模型测试图
+evaluation_results/
+ocr_eval_false_positives/
+whisper_eval_videos/
+
+
+# PaddleOCR 模型文件（如果放在项目中）
+backend/video/models/
+backend/video/video/models/
+models/paddleocr/
+*.pdparams
+*.pdiparams
+*.pdopt
+*.pdmodel
+
+# 启动文件
+.dev_pids.json
+
+# 项目笔记
+markdown/
