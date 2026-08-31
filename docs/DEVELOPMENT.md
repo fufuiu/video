@@ -70,8 +70,11 @@ Copy-Item .env.example .env
 | `CELERY_BROKER_URL` | 可选，覆盖 Celery broker |
 | `CELERY_RESULT_BACKEND` | 可选，覆盖 Celery result backend |
 | `DEEPSEEK_API_KEY/BASE_URL/MODEL` | 字幕优化、翻译、摘要等 AI 能力 |
+| `DJANGO_SECRET_KEY` | Django 签名和 JWT 相关安全配置 |
+| `EMAIL_*` | 可选，邮件验证码和通知的 SMTP 配置 |
+| `ALIPAY_*` | 可选，支付宝沙箱支付配置 |
 
-邮件和支付宝配置目前仍在 `backend/video/video/settings.py` 中维护，尚未全部改为环境变量。不要把其中的敏感值复制到文档、聊天或新分支；见 [安全规范](../SECURITY.md)。
+邮件、支付宝和 Django 密钥已经支持从环境变量读取。不要把敏感值复制到文档、聊天或新分支；见 [安全规范](../SECURITY.md)。
 
 ## 4. 安装前端
 

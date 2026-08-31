@@ -31,7 +31,7 @@ except ImportError:
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-8767!m4@bj3oq$jl2qov58iitt_6lk+z&9*-2^lvb+95@-tub8"
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-only-insecure-key-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -306,14 +306,14 @@ VIDEO_PROCESSED_PATH = os.path.join(MEDIA_ROOT, 'videos/processed')
 VIDEO_THUMBNAIL_PATH = os.path.join(MEDIA_ROOT, 'videos/thumbnails')
 
 # 邮件设置
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.163.com'  # 163邮箱SMTP服务器
-EMAIL_PORT = 465  # 163邮箱SMTP SSL端口
-EMAIL_USE_SSL = True 
-EMAIL_HOST_USER = 'zzy1511995259@163.com' 
-EMAIL_HOST_PASSWORD = 'CRhufbUSnGKujcC8' 
-DEFAULT_FROM_EMAIL = 'zzy1511995259@163.com' 
-SITE_NAME = '视频网站'  
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '465'))
+EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'false').lower() == 'true'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@example.com')
+SITE_NAME = os.environ.get('SITE_NAME', 'Video Platform')
 
 # 邮件调试设置
 EMAIL_TIMEOUT = 30  # 设置超时时间为30秒
@@ -459,21 +459,15 @@ NSFW_DEFAULT_FPS = 1  # 每秒抽帧数
 NSFW_BATCH_SIZE = 4  # 批处理大小
 
 # 支付宝沙箱配置
-ALIPAY_APPID = '9021000161677112'  # 替换为你的沙箱AppID
-ALIPAY_APP_PRIVATE_KEY = '''
-MIIEpAIBAAKCAQEAvCCrXQI0+udA/NjI5/RDSx2R+l4A830wLewxljD4gEvjJ144e1oWCBI7+HiZmAWNqVYYgkpjLYmHynmQmK4vBNjkoo22/ydtXK9iN9zGfz9C7Ut3BVb1E8DHnDZ9tOP4hGoDOZyMab1eBpcoqQ5tkpKPLa2UMPMxWAQXA9upuNKjn6GmsdEKNb5PqCRXeZWzunEXKlMv3++j4ulkn/d8EbY7ZPOUFgJmNqdxITn3Z1dRCiXbQUNQcbTU1dyDXTIR7p71SyIzhNFb4Vv6fKqoOyQ35bzm8j1D0hq9Lk4q+OU/wYc7IB7xKKjHLRmFkcZMRz9edsh39PyOjxfXPkD/pwIDAQABAoIBAGEEI/sp+TJu8ZezICBmWhGxpSdNNQZcR+1WwdenV2+qMvGJaG1MbtIovR6M6wB31K9ABBGk1PKV2x4yhLwID51bUMT3eiipJ3/Fvkv6oa7ba+M9qJprVqWiJA5OF5OigPWgSht6vPqGuqeBammMVDtjM00mF6cKsyalrUzDCgqSSuLNu1+5bme0sC7+EB4MlUQVpsTI0CMuQ2gxKyek9RHFxY3bagPKps7JbvwHCJYKX8dcKm6NhNluFgLREAxVmBMpEidubEKEwzgHqLyi+/fI4F001gOiIvXsgl+1OBEPQtJ4En7MMjmMoxDOxZQ46Jv9JsQj7Ex0uXGvJFHpktkCgYEA7R0gdXd3Qcau4Xnop49dG1hYhCF3mLpv4+EoEuqN5S3+C0NdMm/B4vIz30IvVa3L6g6CI8vEKyC+ZHFpF5g9gOSpeGc0qT4rs3gzH21HOikua8GAokJfT4+DPhZti4/5PugrxXhl0uaOUkrUSYEAvI9Ai+vLeW1e/r8nIMWjphMCgYEAyxywdOlTiGtmqSbM8fUT6p2vsIET+BJTF9TRa5PTXxL2tOMYz2GyTU9Xia35D77uLzpjYwbRAme3pFcJHpqAkMKwJbHknptS5EwkX4+dLKZXREhAVY9JkAB0PelwvzyCYiuHGOt898QOC28ZbXWzN4crzW924cnolOwLmksIAp0CgYEAydlXvme6v+XRDeTnp2ylyBeHEsQiuYNMqOMNaD0AGi7y6sen2L3GgdnJSq9e+EMBKfi71JksH8K6EWtyGUHiaY0+r168N67TKO6UJpayYdKYz+ZkCL0TwfjbsskI7BveBC1Exc/ebpESav+EhCYraFlSi0ppZq8yhQ5Y0s8spr0CgYEAxbnFEdr+haRASVTLWJQDcndVTBcsEGgOWfnEcNx0fW5hmpAlW+U4hUhC6HXjKu/swS8vB3zgRV4giSxtZUx08feFMPzvmXONi0+QbTLKiGfaNk+7yU73BudaQdcZ+iD2sIi9OIYunqhOH9VkxIk7EUhWXOQwr/c1opvzY529S4UCgYA2UokixckuFlZZZVy+5K98C0FBcfq9khTmzAp7kKw9f5+YrZXi1UW2llTrRXu2yfNBhT5VxyBU7EXxF0zFUJWJckgOXsbmsa9Popxkctpq/YIkWdjWPU+2tQczV3e12ieIZ2e8rjy4TNd4IclkAepEJpmaPvMlV2MP013bCEd+UQ==
-'''  
-ALIPAY_PUBLIC_KEY = '''
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1xZGsoHWUu6HLqyt19so3UvMQlO6cUvrcLNK//jB+lf3MDALKE3uVyfR69sob6xJEa3FCA+irz+2e74UIO+LwJlxe4jKWtXYMuHPbyJJzzareoyM4Gh7axrdAqY157F2OvMcb0gXEIMPJ++zPJn/WaSgagNguZr38HUV9RrpDk9bNgEKnUVVn8o3s9BYr3WRK/vBaC3vy2abgoOg/bIGj66TOMSfe1bpyo+si6WLz9g8OP+yI4XmVioF9Hj1scvNSBNOERuP+3FbyZOeaJ2GRUaqEnYwV7aXWa7ICX08fUMmByYAZvncZ/qinib8qNPiq/w88sPQuknezVT05ixzlQIDAQAB
-'''  
-
-ALIPAY_DEBUG = True  # 沙箱模式
-ALIPAY_GATEWAY = 'https://mapi.alipaydev.com/gateway.do'  # 沙箱网关
+ALIPAY_APPID = os.environ.get('ALIPAY_APPID', '')
+ALIPAY_APP_PRIVATE_KEY = os.environ.get('ALIPAY_APP_PRIVATE_KEY', '').replace('\\n', '\n')
+ALIPAY_PUBLIC_KEY = os.environ.get('ALIPAY_PUBLIC_KEY', '').replace('\\n', '\n')
+ALIPAY_DEBUG = os.environ.get('ALIPAY_DEBUG', 'true').lower() == 'true'
+ALIPAY_GATEWAY = os.environ.get('ALIPAY_GATEWAY', 'https://openapi-sandbox.dl.alipaydev.com/gateway.do')
 
 # 支付回调地址（需要根据实际域名修改）
-ALIPAY_RETURN_URL = 'http://localhost:5173/user/vip/return'
-ALIPAY_NOTIFY_URL = 'http://localhost:8000/api/users/vip/notify/'
-
+ALIPAY_RETURN_URL = os.environ.get('ALIPAY_RETURN_URL', 'http://localhost:5173/user/vip/return')
+ALIPAY_NOTIFY_URL = os.environ.get('ALIPAY_NOTIFY_URL', 'http://localhost:8000/api/users/vip/notify/')
 # VIP 价格配置
 VIP_PRICES = {
     1: {'name': 'VIP会员', 'monthly': 19.9, 'quarterly': 49.9, 'yearly': 149.9},
