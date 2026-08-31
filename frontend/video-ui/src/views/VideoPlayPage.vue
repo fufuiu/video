@@ -51,7 +51,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import VideoPlayer from '@/components/VideoPlayer.vue'
-import axios from 'axios'
+import service from '@/api/user'
 
 const route = useRoute()
 const videoId = route.params.id
@@ -65,8 +65,8 @@ const isCollected = ref(false)
 const fetchVideoDetail = async () => {
   try {
     loading.value = true
-    const response = await axios.get(`/api/videos/${videoId}/`)
-    videoData.value = response.data
+    const response = await service.get(`/videos/videos/${videoId}/`)
+    videoData.value = response
     
     // 检查是否已点赞/收藏
     checkLikeStatus()
@@ -117,7 +117,7 @@ const handleTimeUpdate = ({ currentTime, duration, videoId }) => {
 // 上报播放进度
 const reportProgress = async (videoId, currentTime) => {
   try {
-    await axios.post(`/api/videos/${videoId}/record-view/`, {
+    await service.post(`/videos/videos/${videoId}/record-view/`, {
       watched_duration: currentTime
     })
   } catch (error) {
@@ -134,10 +134,10 @@ const handleVideoEnded = ({ videoId }) => {
 const handleLike = async () => {
   try {
     if (isLiked.value) {
-      await axios.delete(`/api/videos/${videoId}/unlike/`)
+      await service.delete(`/videos/videos/${videoId}/unlike/`)
       videoData.value.likes_count--
     } else {
-      await axios.post(`/api/videos/${videoId}/like/`)
+      await service.post(`/videos/videos/${videoId}/like/`)
       videoData.value.likes_count++
     }
     isLiked.value = !isLiked.value
@@ -150,9 +150,9 @@ const handleLike = async () => {
 const handleCollect = async () => {
   try {
     if (isCollected.value) {
-      await axios.delete(`/api/videos/${videoId}/uncollect/`)
+      await service.delete(`/videos/videos/${videoId}/uncollect/`)
     } else {
-      await axios.post(`/api/videos/${videoId}/collect/`)
+      await service.post(`/videos/videos/${videoId}/collect/`)
     }
     isCollected.value = !isCollected.value
   } catch (error) {
@@ -163,8 +163,8 @@ const handleCollect = async () => {
 // 检查点赞状态
 const checkLikeStatus = async () => {
   try {
-    const response = await axios.get(`/api/videos/${videoId}/is-liked/`)
-    isLiked.value = response.data.is_liked
+    const response = await service.get(`/videos/videos/${videoId}/is-liked/`)
+    isLiked.value = response.is_liked
   } catch (error) {
     console.error('检查点赞状态失败:', error)
   }
@@ -173,8 +173,8 @@ const checkLikeStatus = async () => {
 // 检查收藏状态
 const checkCollectStatus = async () => {
   try {
-    const response = await axios.get(`/api/videos/${videoId}/is-collected/`)
-    isCollected.value = response.data.is_collected
+    const response = await service.get(`/videos/videos/${videoId}/is-collected/`)
+    isCollected.value = response.is_collected
   } catch (error) {
     console.error('检查收藏状态失败:', error)
   }
