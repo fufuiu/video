@@ -32,6 +32,19 @@ function normalizeError(error) {
     || DEFAULT_ERROR_MESSAGES[code] || error?.message || '请求失败';
 
   // 保留 Axios response，兼容尚未迁移的页面；业务代码可以逐步改用这些稳定字段。
+  // 后端新协议中的 error 是对象，旧页面则把它当作字符串读取，因此只在客户端错误对象
+  // 上提供过渡字段，服务端正式响应仍保持统一信封。
+  if (nested && typeof nested === 'object' && response) {
+    error.apiError = { ...nested };
+    response.data = {
+      ...data,
+      detail: message,
+      error: message,
+      message,
+      ...(fields || {})
+    };
+  }
+
   error.name = 'AppError';
   error.appErrorCode = code;
   error.fields = fields && typeof fields === 'object' ? fields : {};
