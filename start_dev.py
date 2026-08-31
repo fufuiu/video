@@ -202,6 +202,7 @@ def main():
     print()
     
     pids = {}
+    startup_ok = True
     
     print("[1/4] 检查 Redis...")
     if redis_endpoint["remote"]:
@@ -325,8 +326,10 @@ def main():
             if is_ready:
                 print("  ✓ Django 已就绪（端口和依赖检查通过）")
             else:
+                startup_ok = False
                 print(f"  ⚠ Django 端口已打开，但就绪检查超时（{error}）")
         else:
+            startup_ok = False
             print("  ⚠ Django 启动超时")
     
     # 5. 启动前端 (Electron 模式)
@@ -338,11 +341,15 @@ def main():
         if wait_for_port(5173, timeout=20):
             print("  ✓ 前端端口已就绪，浏览器将自动打开")
         else:
+            startup_ok = False
             print("  ⚠ 前端端口启动超时")
     
     save_pids(pids)
     
-    print_header("所有服务已启动！")
+    if startup_ok:
+        print_header("所有服务已启动！")
+    else:
+        print_header("服务已启动，但未通过全部就绪检查")
     print("后端地址: http://localhost:8000")
     print("前端地址: http://localhost:5173")
     print(f"\nPID 已保存到: {PID_FILE}")
