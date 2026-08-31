@@ -1,9 +1,46 @@
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
+from rest_framework.exceptions import ValidationError
+from rest_framework.test import APIRequestFactory
+
+from core.errors import api_exception_handler
 
 
 class HealthEndpointTests(SimpleTestCase):
+    def test_exception_handler_returns_stable_validation_error(self):
+        request = APIRequestFactory().post('/api/videos/', {})
+        request.request_id = 'req-test-validation'
+
+        response = api_exception_handler(
+            ValidationError({'title': ['此字段是必填项。']}),
+            {'request': request},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
+        self.assertEqual(response.data['error']['fields']['title'], ['此字段是必填项。'])
+        self.assertEqual(response['X-Request-ID'], 'req-test-validation')
+
+    def test_exception_handler_hides_unexpected_exception_details(self):
+        request = APIRequestFactory().get('/api/videos/')
+        request.request_id = 'req-test-internal'
+
+        response = api_exception_handler(
+            RuntimeError('database password must not leak'),
+            {'request': request},
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.data['error']['code'], 'INTERNAL_SERVER_ERROR')
+        self.assertNotIn('password', response.data['error']['message'])
+
+    def test_request_id_is_returned_and_reused(self):
+        response = self.client.get('/api/health/live/', HTTP_X_REQUEST_ID='demo-request-42')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['X-Request-ID'], 'demo-request-42')
+
     def test_live_endpoint_does_not_require_dependencies(self):
         response = self.client.get('/api/health/live/')
 
@@ -41,5 +78,15 @@ class HealthEndpointTests(SimpleTestCase):
         self.assertEqual(response.json()['status'], 'not_ready')
         self.assertEqual(response.json()['checks']['database']['error'], 'RuntimeError')
         self.assertEqual(response.json()['checks']['cache']['error'], 'RuntimeError')
+
+    def test_legacy_auth_error_is_normalized(self):
+        response = self.client.post('/api/auth/login/', {})
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['error']['code'], 'VALIDATION_ERROR')
+        self.assertEqual(payload['error']['message'], '请输入用户名和密码')
+        self.assertEqual(payload['error']['request_id'], response['X-Request-ID'])
 
 # Create your tests here.

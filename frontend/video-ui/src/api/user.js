@@ -4,8 +4,46 @@ import { getToken, getRefreshToken, setToken, removeToken } from '@/utils/auth';
 // Create axios instance
 const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
-  timeout: 15000
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
+
+const DEFAULT_ERROR_MESSAGES = {
+  NETWORK_ERROR: '网络连接失败，请检查网络后重试',
+  TIMEOUT: '请求超时，请稍后重试',
+  AUTHENTICATION_REQUIRED: '登录状态已失效，请重新登录',
+  PERMISSION_DENIED: '没有权限执行此操作',
+  NOT_FOUND: '请求的内容不存在',
+  INTERNAL_SERVER_ERROR: '服务器暂时无法处理请求，请稍后重试'
+};
+
+function normalizeError(error) {
+  const response = error?.response;
+  const data = response?.data;
+  const nested = data?.error;
+  const status = response?.status;
+  const code = nested?.code || data?.code || (status === 401 ? 'AUTHENTICATION_REQUIRED' : null)
+    || (error?.code === 'ECONNABORTED' ? 'TIMEOUT' : null)
+    || (!response ? 'NETWORK_ERROR' : 'REQUEST_FAILED');
+  const fields = nested?.fields || data?.fields || (data && typeof data === 'object' ? data : {});
+  const message = nested?.message || data?.message || data?.detail || data?.error
+    || DEFAULT_ERROR_MESSAGES[code] || error?.message || '请求失败';
+
+  // 保留 Axios response，兼容尚未迁移的页面；业务代码可以逐步改用这些稳定字段。
+  error.name = 'AppError';
+  error.appErrorCode = code;
+  error.fields = fields && typeof fields === 'object' ? fields : {};
+  error.requestId = nested?.request_id || response?.headers?.['x-request-id'] || null;
+  error.httpStatus = status || null;
+  error.message = message;
+  return error;
+}
+
+export function getErrorMessage(error, fallback = '请求失败') {
+  return error?.message || error?.response?.data?.error?.message || fallback;
+}
 
 // Request interceptor
 service.interceptors.request.use(
@@ -13,6 +51,7 @@ service.interceptors.request.use(
     const token = getToken();
     
     if (token) {
+      config.headers = config.headers || {};
       config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
@@ -28,10 +67,16 @@ service.interceptors.response.use(
     return response.data;
   },
   async error => {
+    const requestConfig = error?.config;
     
     // 如果是401错误且没有重试过，尝试刷新token
-    if (error.response?.status === 401 && !error.config._retry) {
-      error.config._retry = true;
+    if (
+      error.response?.status === 401
+      && requestConfig
+      && !requestConfig._retry
+      && !requestConfig.url?.includes('/token/refresh/')
+    ) {
+      requestConfig._retry = true;
       
       try {
         const refreshToken = getRefreshToken();
@@ -39,7 +84,7 @@ service.interceptors.response.use(
         if (!refreshToken) {
           // 如果没有刷新令牌，跳转到登录页
           handleAuthError();
-          return Promise.reject(error);
+          return Promise.reject(normalizeError(error));
         }
         
         // 调用刷新令牌API
@@ -54,16 +99,17 @@ service.interceptors.response.use(
         setToken(access);
         
         // 使用新令牌重新发送原始请求
-        error.config.headers['Authorization'] = `Bearer ${access}`;
-        return axios(error.config);
+        requestConfig.headers = requestConfig.headers || {};
+        requestConfig.headers['Authorization'] = `Bearer ${access}`;
+        return service(requestConfig);
       } catch (refreshError) {
         // 刷新失败，跳转到登录页
         handleAuthError();
-        return Promise.reject(refreshError);
+        return Promise.reject(normalizeError(refreshError));
       }
     }
     
-    return Promise.reject(error);
+    return Promise.reject(normalizeError(error));
   }
 );
 
@@ -665,4 +711,4 @@ export function devMarkVipOrderPaid(orderId) {
   });
 }
 
-export default service; 
+export default service;
