@@ -147,9 +147,8 @@ const performSearch = async (query, page = 1) => {
     }
 
     console.log('搜索参数:', params)
-    // 使用数据库搜索接口
+    // 视频列表接口通过 DRF SearchFilter 支持 search 参数
     const response = await service.get('/videos/videos/', { params })
-    const response = await service.get('/videos/search/', { params })
     
     if (page === 1) {
       videos.value = response.results || []
@@ -596,4 +595,4 @@ onMounted(() => {
     gap: 8px;
   }
 }
-</style> 
+</style>
