@@ -449,6 +449,7 @@ UI 优化是正式方向，但在错误协议和核心交互状态稳定后实�
 
 - `52b1c18 feat: standardize api errors and request tracing`
 - `24119e2 refactor(frontend): route video requests through shared client`
+- `dc80347 fix(frontend): preserve legacy api error consumers`
 
 已完成内容：
 
@@ -458,6 +459,7 @@ UI 优化是正式方向，但在错误协议和核心交互状态稳定后实�
 - 操作日志写入失败改用正式 logger，同时关联 request ID；
 - 前端公共 Axios 层增加 `AppError` 字段、网络/超时错误归一化和安全的 401 刷新重试；
 - 播放页和管理员审核页迁移到公共请求客户端；
+- 为尚未迁移的页面保留错误字段兼容层，避免新错误信封导致提示退化；
 - 增加统一错误、未知异常脱敏和 request ID 测试。
 
 验证结果：
