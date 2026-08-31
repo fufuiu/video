@@ -476,12 +476,12 @@ onMounted(() => {
   letter-spacing: 0.5px;
 }
 
-.resolution-badge.4k {
+.resolution-badge[class~="4k"] {
   background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
   box-shadow: 0 2px 8px rgba(238, 90, 36, 0.4);
 }
 
-.resolution-badge.2k {
+.resolution-badge[class~="2k"] {
   background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
   box-shadow: 0 2px 8px rgba(108, 92, 231, 0.4);
 }
