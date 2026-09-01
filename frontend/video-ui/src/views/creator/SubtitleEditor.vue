@@ -223,7 +223,7 @@ const pollSubtitleTaskStatus = async () => {
     }
     if (state === 'FAILURE') {
       isGeneratingSubtitles.value = false
-      ElMessage.error('字幕生成失败')
+      ElMessage.error(res?.error?.message || '字幕生成失败，请稍后重试')
       return
     }
   } catch (e) {

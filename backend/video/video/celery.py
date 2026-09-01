@@ -11,6 +11,9 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 
 app.autodiscover_tasks()
 
+# Import lifecycle signal handlers once when the Celery application is loaded.
+import core.task_lifecycle  # noqa: E402,F401
+
 # Celery Beat 定时任务配置
 app.conf.beat_schedule = {
     # 任务1：每天凌晨 3 点自动清理已标记为“删除”的视频文件和记录

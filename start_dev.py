@@ -7,6 +7,8 @@ import platform
 import shutil
 import json
 from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 
 PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dev_pids.json")
@@ -28,10 +30,25 @@ def check_dependency(name, command):
 
 def check_port(port, host="127.0.0.1"):
     """检查端口是否被占用"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(1)
-        result = s.connect_ex((host, port))
-        return result == 0  # True = 被占用
+    try:
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        return False
+
+    for family, sock_type, protocol, _, address in addresses:
+        try:
+            with socket.socket(family, sock_type, protocol) as s:
+                s.settimeout(1)
+                if s.connect_ex(address) == 0:
+                    return True  # True = 被占用/服务可连接
+        except OSError:
+            continue
+    return False
+
+
+def check_local_port(port):
+    """同时检查本机 IPv4 和 IPv6 回环地址。"""
+    return check_port(port, "127.0.0.1") or check_port(port, "::1")
 
 
 def load_env_file(root_dir):
@@ -79,10 +96,29 @@ def wait_for_port(port, timeout=30, check_interval=0.5):
     """等待端口可用（服务启动成功）"""
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if check_port(port, "127.0.0.1") or check_port(port, "0.0.0.0"):
+        if check_local_port(port):
             return True
         time.sleep(check_interval)
     return False
+
+
+def wait_for_http(url, timeout=30, check_interval=0.5):
+    """等待 HTTP 探针返回 2xx，并返回最后一次失败原因。"""
+    deadline = time.time() + timeout
+    last_error = "未收到响应"
+    while time.time() < deadline:
+        try:
+            request = Request(url, method="GET")
+            with urlopen(request, timeout=2) as response:
+                if 200 <= response.status < 300:
+                    return True, None
+                last_error = f"HTTP {response.status}"
+        except HTTPError as exc:
+            last_error = f"HTTP {exc.code}"
+        except (URLError, TimeoutError, OSError) as exc:
+            last_error = type(exc).__name__
+        time.sleep(check_interval)
+    return False, last_error
 
 
 def print_header(text):
@@ -101,11 +137,17 @@ def start_process(name, command, cwd=None, shell=True, log_file=None):
     """启动进程并返回 PID"""
     system = platform.system()
     
-    # 如果指定了日志文件，输出到文件；否则输出到 DEVNULL
+    # 如果指定了日志文件，由 shell 负责追加 stdout/stderr；否则输出到 DEVNULL。
+    # Windows 的 shell=True + DETACHED_PROCESS 可能不会继承 Python 文件句柄，
+    # 因此不依赖 Popen 的 stdout 重定向。
     if log_file:
         log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), log_file)
-        stdout_handle = open(log_path, "w", encoding="utf-8")
-        stderr_handle = subprocess.STDOUT
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as log:
+            log.write(f"\n--- {name} starting {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        command = f'{command} >> "{log_path}" 2>&1'
+        stdout_handle = subprocess.DEVNULL
+        stderr_handle = subprocess.DEVNULL
     else:
         stdout_handle = subprocess.DEVNULL
         stderr_handle = subprocess.DEVNULL
@@ -121,6 +163,7 @@ def start_process(name, command, cwd=None, shell=True, log_file=None):
     # Windows 特殊处理：创建新进程组，避免信号传递
     if system == "Windows":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        kwargs["close_fds"] = False
     else:
         kwargs["start_new_session"] = True
     
@@ -169,7 +212,7 @@ def main():
         print("  - 端口 6379 (Redis) 未运行，稍后启动")
     
     for name, port in ports_to_check.items():
-        if check_port(port):
+        if check_local_port(port):
             print(f"  ✗ 端口 {port} ({name}) 已被占用")
             port_conflict = True
         else:
@@ -181,6 +224,7 @@ def main():
     print()
     
     pids = {}
+    startup_ok = True
     
     print("[1/4] 检查 Redis...")
     if redis_endpoint["remote"]:
@@ -189,7 +233,7 @@ def main():
             sys.exit(1)
         print("  Redis 远程服务已连接")
         pids["redis"] = None
-    elif check_port(6379):
+    elif check_local_port(6379):
         print("  ✓ Redis 已在运行（系统服务）")
         pids["redis"] = None  
     else:
@@ -202,7 +246,7 @@ def main():
         if pid:
             pids["redis"] = pid
             time.sleep(1)
-            if not check_port(6379):
+            if not check_local_port(6379):
                 print("  ⚠ Redis 可能未正常启动，请检查")
     
     # 获取虚拟环境 Python 路径
@@ -228,7 +272,12 @@ def main():
             "--max-memory-per-child=500000 "
             "--events"
         )
-    pid = start_process("Celery Worker", celery_cmd, cwd=backend_dir)
+    pid = start_process(
+        "Celery Worker",
+        celery_cmd,
+        cwd=backend_dir,
+        log_file="backend/video/logs/celery_worker.log",
+    )
     if pid:
         pids["celery"] = pid
         print("  等待 Celery 启动...")
@@ -261,7 +310,12 @@ def main():
     # 3. 启动 Celery Beat（定时任务调度器）
     print("\n[3/6] 启动 Celery Beat...")
     beat_cmd = f"{venv_celery} -A video beat -l info"
-    pid = start_process("Celery Beat", beat_cmd, cwd=backend_dir)
+    pid = start_process(
+        "Celery Beat",
+        beat_cmd,
+        cwd=backend_dir,
+        log_file="backend/video/logs/celery_beat.log",
+    )
     if pid:
         pids["celery_beat"] = pid
         print("  等待 Celery Beat 启动...")
@@ -294,27 +348,50 @@ def main():
     # 4. 启动 Django (Uvicorn)
     print("\n[4/5] 启动 Django (Uvicorn)...")
     django_cmd = f"{venv_python} -m uvicorn video.asgi:application --host 127.0.0.1 --port 8000 --ws websockets"
-    pid = start_process("Django", django_cmd, cwd=backend_dir)
+    pid = start_process(
+        "Django",
+        django_cmd,
+        cwd=backend_dir,
+        log_file="backend/video/logs/uvicorn.log",
+    )
     if pid:
         pids["django"] = pid
         print("  等待 Django 启动...")
         if wait_for_port(8000, timeout=15):
-            print("  ✓ Django 已就绪")
+            ready_url = "http://127.0.0.1:8000/api/health/ready/"
+            is_ready, error = wait_for_http(ready_url, timeout=20)
+            if is_ready:
+                print("  ✓ Django 已就绪（端口和依赖检查通过）")
+            else:
+                startup_ok = False
+                print(f"  ⚠ Django 端口已打开，但就绪检查超时（{error}）")
         else:
+            startup_ok = False
             print("  ⚠ Django 启动超时")
     
     # 5. 启动前端 (Electron 模式)
     print("\n[5/5] 启动前端 (Electron)...")
     frontend_cmd = "npm run electron:dev"
-    pid = start_process("Frontend (Electron)", frontend_cmd, cwd=frontend_dir)
+    pid = start_process(
+        "Frontend (Electron)",
+        frontend_cmd,
+        cwd=frontend_dir,
+        log_file="backend/video/logs/frontend.log",
+    )
     if pid:
         pids["frontend"] = pid
-        time.sleep(2)  # 等待窗口出现
-        print("  ✓ 前端已启动，浏览器将自动打开")
+        if wait_for_port(5173, timeout=20):
+            print("  ✓ 前端端口已就绪，浏览器将自动打开")
+        else:
+            startup_ok = False
+            print("  ⚠ 前端端口启动超时")
     
     save_pids(pids)
     
-    print_header("所有服务已启动！")
+    if startup_ok:
+        print_header("所有服务已启动！")
+    else:
+        print_header("服务已启动，但未通过全部就绪检查")
     print("后端地址: http://localhost:8000")
     print("前端地址: http://localhost:5173")
     print(f"\nPID 已保存到: {PID_FILE}")

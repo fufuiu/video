@@ -268,7 +268,7 @@ class SystemSettingsViewSet(viewsets.ViewSet):
             except Exception as e:
                 redis_info = {
                     'status': 'disconnected',
-                    'error': str(e),
+                    'error': '缓存服务暂不可用',
                 }
             
             # 媒体存储信息
@@ -329,7 +329,7 @@ class SystemSettingsViewSet(viewsets.ViewSet):
             
         except Exception as e:
             return Response(
-                {'error': f'获取系统信息失败: {str(e)}'},
+                {'error': '获取系统信息失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -400,7 +400,7 @@ class SystemSettingsViewSet(viewsets.ViewSet):
             
         except Exception as e:
             return Response(
-                {'error': f'获取性能数据失败: {str(e)}'},
+                {'error': '获取性能数据失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -455,7 +455,7 @@ class SystemSettingsViewSet(viewsets.ViewSet):
             
         except Exception as e:
             return Response(
-                {'error': f'获取配置信息失败: {str(e)}'},
+                {'error': '获取配置信息失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -501,6 +501,6 @@ class SystemSettingsViewSet(viewsets.ViewSet):
             
         except Exception as e:
             return Response(
-                {'error': f'获取历史数据失败: {str(e)}'},
+                {'error': '获取历史数据失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

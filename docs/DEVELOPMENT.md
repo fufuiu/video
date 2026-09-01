@@ -69,6 +69,7 @@ Copy-Item .env.example .env
 | `REDIS_CHANNEL_URL` | 可选，Channels 地址，默认使用 Redis DB 2 |
 | `CELERY_BROKER_URL` | 可选，覆盖 Celery broker |
 | `CELERY_RESULT_BACKEND` | 可选，覆盖 Celery result backend |
+| `CELERY_TASK_DEFAULT_QUEUE` | Celery 队列名；共享 Redis 时每套环境必须唯一，防止任务被其他 Worker 抢走 |
 | `DEEPSEEK_API_KEY/BASE_URL/MODEL` | 字幕优化、翻译、摘要等 AI 能力 |
 | `DJANGO_SECRET_KEY` | Django 签名和 JWT 相关安全配置 |
 | `EMAIL_*` | 可选，邮件验证码和通知的 SMTP 配置 |
@@ -182,7 +183,11 @@ npm run build
 Pop-Location
 ```
 
-当前前端构建会在搜索页的重复 `response` 声明处失败；修复前不要把构建标记为通过。连接验证应分别执行 MySQL `SELECT 1` 和 Redis `PING`，不要用“端口可连接”代替“账号权限正确”。
+截至 2026-09-01，搜索页重复声明 `response` 的问题已经修复，`npm run build` 已通过，仅保留大 chunk 性能提示。后续如果构建再次失败，应保留并排查当次首个错误，不要继续沿用历史故障结论。
+
+连接验证应分别执行 MySQL `SELECT 1` 和 Redis `PING`，不要用“端口可连接”代替“账号权限正确”。当前业务数据库检查和迁移计划检查已经通过，但全量 Django 测试创建 `test_video_dev` 时仍受 MySQL 1044 权限错误阻塞；测试通过前需要为测试库提供独立权限或独立测试数据库方案。
+
+需要启用 DeepSeek、阿里云 AI 或 OSS 时，不要把云 SDK 混入所有开发机；按[云端 AI 配置手册](AI_CLOUD_CONFIGURATION.md)只在云端 Worker 安装 `requirements-cloud.txt`，配置后先运行 `manage.py check_ai_config`，再用小样本逐项验收。
 
 ## 8. 日志位置
 

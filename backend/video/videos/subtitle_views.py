@@ -164,7 +164,7 @@ async def _translate_subtitles_async(request, video_id):
     except Exception as e:
         logger.error(f"翻译字幕失败: {str(e)}")
         return Response(
-            {'error': f'翻译失败: {str(e)}'},
+            {'error': '翻译失败，请稍后重试'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -283,6 +283,6 @@ async def _optimize_subtitles_async(request, video_id):
     except Exception as e:
         logger.error(f"优化字幕失败: {str(e)}")
         return Response(
-            {'error': f'优化失败: {str(e)}'},
+            {'error': '优化失败，请稍后重试'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

@@ -585,7 +585,12 @@ const submitLoginForm = async () => {
           const errorData = error.response.data;
           
           // 检查是否需要验证码
-          if (errorData.require_captcha) {
+          if (
+            errorData.require_captcha
+            || errorData.show_captcha
+            || errorData.error?.meta?.show_captcha
+            || error.apiError?.meta?.show_captcha
+          ) {
             captchaData.show = true;
             refreshCaptcha();
             ElMessage.warning('请输入验证码');
@@ -1688,4 +1693,4 @@ onMounted(() => {
 .right-panel .btn-transparent {
   margin-left: auto;
 }
-</style> 
+</style>

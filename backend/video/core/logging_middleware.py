@@ -3,8 +3,12 @@
 """
 import time
 import json
+import logging
 from django.utils.deprecation import MiddlewareMixin
 from users.models_logs import SystemOperationLog
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_client_ip(request):
@@ -81,7 +85,12 @@ class OperationLogMiddleware(MiddlewareMixin):
             )
         except Exception as e:
             # 日志记录失败不应影响正常请求
-            print(f"记录操作日志失败: {e}")
+            logger.exception(
+                "记录操作日志失败 request_id=%s path=%s: %s",
+                getattr(request, 'request_id', None),
+                request.path,
+                e,
+            )
         
         return response
     

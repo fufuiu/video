@@ -27,6 +27,15 @@ except ImportError:
     pass
 
 
+def _env_int(name, default):
+    """读取整数配置，并在配置错误时快速失败。"""
+    value = os.environ.get(name, str(default))
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f'{name} 必须是整数') from exc
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
@@ -65,6 +74,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "core.request_id_middleware.RequestIDMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -73,6 +83,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.logging_middleware.OperationLogMiddleware",
+    "core.errors.APIErrorResponseMiddleware",
 ]
 
 ROOT_URLCONF = "video.urls"
@@ -135,6 +146,7 @@ DATABASES = {
         "PORT": os.environ.get("MYSQL_PORT", "3306"),
         "OPTIONS": {
             "charset": "utf8mb4",
+            "connect_timeout": _env_int('MYSQL_CONNECT_TIMEOUT', 5),
         },
     }
 }
@@ -198,6 +210,7 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
+    'EXCEPTION_HANDLER': 'core.errors.api_exception_handler',
 }
 
 
@@ -266,11 +279,43 @@ CORS_EXPOSE_HEADERS = [
 
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL)
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', REDIS_URL)
+CELERY_TASK_DEFAULT_QUEUE = os.environ.get('CELERY_TASK_DEFAULT_QUEUE', 'video_dev')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True  # 消除 Celery 6.0 警告
+CELERY_TASK_TRACK_STARTED = True
+
+# Long-running tasks must not remain invisible forever. Late acknowledgements
+# allow a worker crash to return the message to the broker; the hard limit is a
+# final safety net after the soft limit has had a chance to clean up.
+CELERY_TASK_ANNOTATIONS = {
+    'videos.tasks.process_video': {
+        'soft_time_limit': _env_int('VIDEO_PROCESS_SOFT_TIME_LIMIT', 7200),
+        'time_limit': _env_int('VIDEO_PROCESS_TIME_LIMIT', 7500),
+        'acks_late': True,
+        'reject_on_worker_lost': True,
+    },
+    'ai_service.tasks.generate_video_subtitles': {
+        'soft_time_limit': _env_int('VIDEO_SUBTITLE_SOFT_TIME_LIMIT', 1800),
+        'time_limit': _env_int('VIDEO_SUBTITLE_TIME_LIMIT', 2100),
+        'acks_late': True,
+        'reject_on_worker_lost': True,
+    },
+    'ai_service.tasks.detect_video_subtitle': {
+        'soft_time_limit': _env_int('VIDEO_SUBTITLE_DETECT_SOFT_TIME_LIMIT', 1800),
+        'time_limit': _env_int('VIDEO_SUBTITLE_DETECT_TIME_LIMIT', 2100),
+        'acks_late': True,
+        'reject_on_worker_lost': True,
+    },
+    'ai_service.tasks.moderate_video_task': {
+        'soft_time_limit': _env_int('VIDEO_MODERATION_SOFT_TIME_LIMIT', 3600),
+        'time_limit': _env_int('VIDEO_MODERATION_TIME_LIMIT', 3900),
+        'acks_late': True,
+        'reject_on_worker_lost': True,
+    },
+}
 
 # 任务结果过期时间（秒）
 CELERY_RESULT_EXPIRES = 3600 
@@ -285,11 +330,16 @@ CELERY_WORKER_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s] %(messa
 CELERY_WORKER_TASK_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s'
 
 # Django Cache 配置
+# redis-py 5.x 的 Connection 只接受小写 socket_connect_timeout / socket_timeout
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': REDIS_CACHE_URL,
         'KEY_PREFIX': 'video_web',
+        'OPTIONS': {
+            'socket_connect_timeout': _env_int('REDIS_SOCKET_CONNECT_TIMEOUT', 5),
+            'socket_timeout': _env_int('REDIS_SOCKET_TIMEOUT', 5),
+        },
         'TIMEOUT': 3600,  # 默认缓存超时时间（秒）
     }
 }
@@ -414,6 +464,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'core.task_lifecycle': {
+            'handlers': ['console', 'celery_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
         # 视频任务日志
         'videos.tasks': {
             'handlers': ['console', 'celery_file'],
@@ -442,13 +497,61 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        # httpx logs the full request URL at INFO. Alibaba result URLs are
+        # short-lived signed URLs, so keep them out of application logs.
+        'httpx': {
+            'handlers': ['console', 'django_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'httpcore': {
+            'handlers': ['console', 'django_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
     },
 }
 
-# DeepSeek API 
+# AI Provider selection. Missing cloud credentials must not block Django startup.
+AI_TEXT_PROVIDER = os.environ.get('AI_TEXT_PROVIDER', 'deepseek')
+AI_ASR_PROVIDER = os.environ.get('AI_ASR_PROVIDER', 'disabled')
+AI_OCR_PROVIDER = os.environ.get('AI_OCR_PROVIDER', 'disabled')
+AI_MODERATION_PROVIDER = os.environ.get('AI_MODERATION_PROVIDER', 'disabled')
+AI_STORAGE_PROVIDER = os.environ.get('AI_STORAGE_PROVIDER', 'local')
+AI_PROVIDER_TIMEOUT_SECONDS = _env_int('AI_PROVIDER_TIMEOUT_SECONDS', 60)
+AI_PROVIDER_MAX_RETRIES = _env_int('AI_PROVIDER_MAX_RETRIES', 2)
+AI_TEXT_MAX_INPUT_CHARS = _env_int('AI_TEXT_MAX_INPUT_CHARS', 50000)
+AI_CLOUD_MAX_INPUT_BYTES = _env_int('AI_CLOUD_MAX_INPUT_BYTES', 2 * 1024 * 1024 * 1024)
+AI_OCR_SAMPLE_COUNT = _env_int('AI_OCR_SAMPLE_COUNT', 8)
+
+# DeepSeek API
 DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', '') 
 DEEPSEEK_BASE_URL = os.environ.get('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
-DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')
+DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-v4-flash')
+
+# Alibaba Cloud AI APIs. Access keys are read only when a provider is invoked.
+ALIBABA_CLOUD_ACCESS_KEY_ID = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_ID', '')
+ALIBABA_CLOUD_ACCESS_KEY_SECRET = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET', '')
+ALIBABA_CLOUD_SECURITY_TOKEN = os.environ.get('ALIBABA_CLOUD_SECURITY_TOKEN', '')
+DASHSCOPE_API_KEY = os.environ.get('DASHSCOPE_API_KEY', '')
+DASHSCOPE_REGION = os.environ.get('DASHSCOPE_REGION', 'beijing')
+DASHSCOPE_BASE_URL = os.environ.get('DASHSCOPE_BASE_URL', '')
+DASHSCOPE_ASR_MODEL = os.environ.get('DASHSCOPE_ASR_MODEL', 'fun-asr')
+DASHSCOPE_POLL_INTERVAL_SECONDS = _env_int('DASHSCOPE_POLL_INTERVAL_SECONDS', 10)
+DASHSCOPE_POLL_TIMEOUT_SECONDS = _env_int('DASHSCOPE_POLL_TIMEOUT_SECONDS', 1500)
+AI_AUDIO_EXTRACT_TIMEOUT_SECONDS = _env_int('AI_AUDIO_EXTRACT_TIMEOUT_SECONDS', 900)
+ALIYUN_OSS_ENDPOINT = os.environ.get('ALIYUN_OSS_ENDPOINT', 'oss-cn-beijing.aliyuncs.com')
+ALIYUN_OSS_BUCKET = os.environ.get('ALIYUN_OSS_BUCKET', '')
+ALIYUN_OSS_PREFIX = os.environ.get('ALIYUN_OSS_PREFIX', 'ai-temp/')
+ALIYUN_OSS_SIGNED_URL_TTL_SECONDS = _env_int('ALIYUN_OSS_SIGNED_URL_TTL_SECONDS', 21600)
+ALIYUN_OSS_TEMP_RETENTION_HOURS = _env_int('ALIYUN_OSS_TEMP_RETENTION_HOURS', 24)
+ALIYUN_OCR_ENDPOINT = os.environ.get('ALIYUN_OCR_ENDPOINT', 'ocr-api.cn-hangzhou.aliyuncs.com')
+ALIYUN_OCR_MAX_IMAGE_BYTES = _env_int('ALIYUN_OCR_MAX_IMAGE_BYTES', 10 * 1024 * 1024)
+ALIYUN_GREEN_REGION = os.environ.get('ALIYUN_GREEN_REGION', 'cn-shanghai')
+ALIYUN_GREEN_ENDPOINT = os.environ.get('ALIYUN_GREEN_ENDPOINT', 'green-cip.cn-shanghai.aliyuncs.com')
+ALIYUN_VIDEO_MODERATION_SERVICE = os.environ.get('ALIYUN_VIDEO_MODERATION_SERVICE', 'videoDetection')
+ALIYUN_MODERATION_POLL_INTERVAL_SECONDS = _env_int('ALIYUN_MODERATION_POLL_INTERVAL_SECONDS', 15)
+ALIYUN_MODERATION_POLL_TIMEOUT_SECONDS = _env_int('ALIYUN_MODERATION_POLL_TIMEOUT_SECONDS', 1800)
 
 
 # NSFW 检测模型配置

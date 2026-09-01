@@ -237,6 +237,7 @@ import PageHeader from '@/components/common/PageHeader.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { formatDate } from '@/utils/format';
 import { getPendingVideos, getReviewedVideos, approveVideo, rejectVideo } from '@/api/admin';
+import service from '@/api/user';
 import Artplayer from 'artplayer';
 import Hls from 'hls.js';
 
@@ -497,16 +498,11 @@ const submitReject = () => {
 // 触发转码
 const triggerProcessing = async () => {
   try {
-    await fetch(`http://localhost:8000/api/videos/videos/${currentVideo.value.id}/process/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`
-      }
-    });
+    await service.post(`/videos/videos/${currentVideo.value.id}/process/`);
     ElMessage.success('已提交');
     setTimeout(fetchVideoList, 3000);
   } catch (error) {
-    ElMessage.error('失败');
+    ElMessage.error(error.message || '提交转码任务失败');
   }
 };
 

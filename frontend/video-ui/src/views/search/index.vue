@@ -147,9 +147,8 @@ const performSearch = async (query, page = 1) => {
     }
 
     console.log('搜索参数:', params)
-    // 使用数据库搜索接口
+    // 视频列表接口通过 DRF SearchFilter 支持 search 参数
     const response = await service.get('/videos/videos/', { params })
-    const response = await service.get('/videos/search/', { params })
     
     if (page === 1) {
       videos.value = response.results || []
@@ -477,12 +476,12 @@ onMounted(() => {
   letter-spacing: 0.5px;
 }
 
-.resolution-badge.4k {
+.resolution-badge[class~="4k"] {
   background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
   box-shadow: 0 2px 8px rgba(238, 90, 36, 0.4);
 }
 
-.resolution-badge.2k {
+.resolution-badge[class~="2k"] {
   background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
   box-shadow: 0 2px 8px rgba(108, 92, 231, 0.4);
 }
@@ -596,4 +595,4 @@ onMounted(() => {
     gap: 8px;
   }
 }
-</style> 
+</style>

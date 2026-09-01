@@ -8,6 +8,7 @@ from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 from django.core.cache import cache
+from core.task_lifecycle import report_task_progress
 import logging
 import hashlib
 
@@ -99,6 +100,7 @@ def process_video(self, video_id):
     from .models import Video
     
     task_id = self.request.id or 'unknown'
+    report_task_progress(self, current=0, message='开始处理视频', target_video_id=video_id)
     logger.info(f"{'='*60}")
     logger.info(f"[Task {task_id}] 收到视频处理任务: video_id={video_id}")
     logger.info(f"[Task {task_id}] 重试次数: {self.request.retries}/{self.max_retries}")
@@ -648,6 +650,7 @@ def process_video(self, video_id):
         logger.info(f"[Task {task_id}] 生成了 {len(resolutions)} 个分辨率")
         logger.info(f"[Task {task_id}] HLS 文件: {relative_hls_path}")
         logger.info(f"[Task {task_id}] {'='*60}")
+        report_task_progress(self, current=100, message='视频处理完成', target_video_id=video_id)
         return {"status": "success", "video_id": video_id, "resolutions": len(resolutions)}
         
     except Video.DoesNotExist:

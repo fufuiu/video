@@ -1,11 +1,49 @@
 import axios from 'axios';
 import { getToken, getRefreshToken, setToken, removeToken } from '@/utils/auth';
+import { normalizeApiError } from './errors';
 
 // Create axios instance
 const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
-  timeout: 15000
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
+
+function normalizeError(error) {
+  const response = error?.response;
+  const data = response?.data;
+  const { code, fields, message, requestId, httpStatus, nested, meta } = normalizeApiError(error);
+
+  // 保留 Axios response，兼容尚未迁移的页面；业务代码可以逐步改用这些稳定字段。
+  // 后端新协议中的 error 是对象，旧页面则把它当作字符串读取，因此只在客户端错误对象
+  // 上提供过渡字段，服务端正式响应仍保持统一信封。
+  if (nested && typeof nested === 'object' && response) {
+    error.apiError = { ...nested, meta };
+    response.data = {
+      ...data,
+      detail: message,
+      error: message,
+      message,
+      ...(fields || {}),
+      ...(meta || {})
+    };
+  }
+
+  error.name = 'AppError';
+  error.appErrorCode = code;
+  error.fields = fields && typeof fields === 'object' ? fields : {};
+  error.requestId = requestId;
+  error.httpStatus = httpStatus;
+  error.meta = meta && typeof meta === 'object' ? meta : {};
+  error.message = message;
+  return error;
+}
+
+export function getErrorMessage(error, fallback = '请求失败') {
+  return error?.message || error?.response?.data?.error?.message || fallback;
+}
 
 // Request interceptor
 service.interceptors.request.use(
@@ -13,6 +51,7 @@ service.interceptors.request.use(
     const token = getToken();
     
     if (token) {
+      config.headers = config.headers || {};
       config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
@@ -28,10 +67,16 @@ service.interceptors.response.use(
     return response.data;
   },
   async error => {
+    const requestConfig = error?.config;
     
     // 如果是401错误且没有重试过，尝试刷新token
-    if (error.response?.status === 401 && !error.config._retry) {
-      error.config._retry = true;
+    if (
+      error.response?.status === 401
+      && requestConfig
+      && !requestConfig._retry
+      && !requestConfig.url?.includes('/token/refresh/')
+    ) {
+      requestConfig._retry = true;
       
       try {
         const refreshToken = getRefreshToken();
@@ -39,31 +84,31 @@ service.interceptors.response.use(
         if (!refreshToken) {
           // 如果没有刷新令牌，跳转到登录页
           handleAuthError();
-          return Promise.reject(error);
+          return Promise.reject(normalizeError(error));
         }
         
         // 调用刷新令牌API
-        const response = await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'}/token/refresh/`,
-          { refresh: refreshToken }
-        );
+        const response = await service.post('/token/refresh/', {
+          refresh: refreshToken
+        });
         
-        const { access } = response.data;
+        const { access } = response;
         
         // 更新访问令牌
         setToken(access);
         
         // 使用新令牌重新发送原始请求
-        error.config.headers['Authorization'] = `Bearer ${access}`;
-        return axios(error.config);
+        requestConfig.headers = requestConfig.headers || {};
+        requestConfig.headers['Authorization'] = `Bearer ${access}`;
+        return service(requestConfig);
       } catch (refreshError) {
         // 刷新失败，跳转到登录页
         handleAuthError();
-        return Promise.reject(refreshError);
+        return Promise.reject(normalizeError(refreshError));
       }
     }
     
-    return Promise.reject(error);
+    return Promise.reject(normalizeError(error));
   }
 );
 
@@ -665,4 +710,4 @@ export function devMarkVipOrderPaid(orderId) {
   });
 }
 
-export default service; 
+export default service;

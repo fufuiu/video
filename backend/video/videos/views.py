@@ -34,6 +34,7 @@ import logging
 from rest_framework.views import APIView
 from rest_framework import serializers
 from django.http import HttpResponse
+from core.task_lifecycle import enqueue_task, serialize_task_result, task_context_matches
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,9 @@ class VideoViewSet(viewsets.ModelViewSet):
         # 登录用户访问自己的视频（编辑、详情等操作）
         if self.request.user.is_authenticated:
             if self.action in ['retrieve', 'update', 'partial_update', 'destroy', 'publish', 'upload_thumbnail',
-             'detect_subtitle', 'restore', 'permanent_delete', 'trigger_transcode_action', 'resubmit_review']:
+             'detect_subtitle', 'detect', 'detection_status', 'generate_subtitles',
+             'subtitle_task_status', 'process', 'process_task_status', 'restore',
+             'permanent_delete', 'trigger_transcode_action', 'resubmit_review']:
                 # 用户可以访问自己的所有视频
                 if self.request.user.is_staff:
                     # 管理员可以访问所有用户的视频（用于后台管理）
@@ -239,19 +242,62 @@ class VideoViewSet(viewsets.ModelViewSet):
         
         # 触发转码任务
         try:
-            process_video.delay(video.id)
+            async_result = enqueue_task(
+                process_video,
+                video.id,
+                request=request,
+                target_video_id=video.id,
+                dedupe_key=f"video:{video.id}:process",
+            )
             logger.info(f"手动触发视频 {video.id} 的转码任务")
             return Response({
                 "detail": "转码任务已提交",
-                "video_id": video.id
+                "video_id": video.id,
+                "task_id": async_result.id,
+                "status": "submitted"
             })
         except Exception as e:
             logger.error(f"触发转码任务失败: {str(e)}")
             return Response(
-                {"detail": f"触发转码任务失败: {str(e)}"},
+                {"detail": "触发转码任务失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    @action(detail=True, methods=['get'], url_path='process-task-status')
+    def process_task_status(self, request, pk=None):
+        """Return the normalized status of a video processing task."""
+        video = self.get_object()
+        if not (request.user.is_staff or video.user == request.user):
+            return Response(
+                {"detail": "无权操作此视频"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        task_id = request.query_params.get('task_id')
+        if not task_id:
+            return Response(
+                {"detail": "缺少 task_id"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not task_context_matches(
+            task_id,
+            video_id=video.id,
+            user_id=request.user.id,
+            is_admin=request.user.is_staff,
+        ):
+            return Response(
+                {"detail": "任务不存在或无权查询"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from celery.result import AsyncResult
+
+        return Response(serialize_task_result(
+            AsyncResult(task_id),
+            target_video_id=video.id,
+        ))
+
     @action(detail=True, methods=['post'])
     def restore(self, request, pk=None):
         """恢复已删除的视频"""
@@ -466,7 +512,7 @@ class VideoViewSet(viewsets.ModelViewSet):
                     logger.error(f"清理上传文件失败: {str(cleanup_error)}")
             
             return Response(
-                {"detail": f"视频创建失败: {str(e)}"},
+                {"detail": "视频创建失败，请检查文件和信息后重试"},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -623,9 +669,20 @@ class VideoViewSet(viewsets.ModelViewSet):
             logger.info(f"视频尚未处理，触发处理任务，视频ID: {video.id}")
             # 注意：不在这里改状态，让 task 自己通过原子操作来改
             # 这样可以保证只有一个 task 能成功获取处理权
-            process_video.delay(video.id)
+            async_result = enqueue_task(
+                process_video,
+                video.id,
+                request=request,
+                target_video_id=video.id,
+                dedupe_key=f"video:{video.id}:process",
+            )
             return Response(
-                {"detail": "视频正在处理中，处理完成后将自动提交审核"}, 
+                {
+                    "detail": "视频正在处理中，处理完成后将自动提交审核",
+                    "video_id": video.id,
+                    "task_id": async_result.id,
+                    "status": "submitted",
+                },
                 status=status.HTTP_202_ACCEPTED
             )
         
@@ -776,11 +833,18 @@ class VideoViewSet(viewsets.ModelViewSet):
                 }, status=status.HTTP_202_ACCEPTED)
             
             # 触发处理任务
-            process_video.delay(video.id)
+            async_result = enqueue_task(
+                process_video,
+                video.id,
+                request=request,
+                target_video_id=video.id,
+                dedupe_key=f"video:{video.id}:process",
+            )
             return Response({
                 'message': '视频处理已启动',
                 'video_id': video.id,
-                'status': video.status
+                'status': 'submitted',
+                'task_id': async_result.id
             }, status=status.HTTP_202_ACCEPTED)
         
         # 状态是 pending_subtitle_edit，更新为转码中
@@ -791,12 +855,19 @@ class VideoViewSet(viewsets.ModelViewSet):
         
         # 触发转码任务
         from .tasks import process_video
-        process_video.delay(video.id)
+        async_result = enqueue_task(
+            process_video,
+            video.id,
+            request=request,
+            target_video_id=video.id,
+            dedupe_key=f"video:{video.id}:process",
+        )
         
         return Response({
             'message': '转码已启动',
             'video_id': video.id,
-            'status': video.status
+            'status': 'submitted',
+            'task_id': async_result.id
         }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'], url_path='upload-thumbnail', parser_classes=[MultiPartParser, FormParser])
@@ -875,7 +946,7 @@ class VideoViewSet(viewsets.ModelViewSet):
                     logger.error(f"清理缩略图失败: {str(cleanup_error)}")
 
             return Response(
-                {"detail": f"缩略图上传失败: {str(e)}"},
+                {"detail": "缩略图上传失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -924,7 +995,7 @@ class VideoViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"字幕检测失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"字幕检测失败: {str(e)}"},
+                {"detail": "字幕检测失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1068,16 +1139,24 @@ class VideoViewSet(viewsets.ModelViewSet):
 
         try:
             from .tasks import generate_video_subtitles
-            async_result = generate_video_subtitles.delay(video.id, language=language)
+            async_result = enqueue_task(
+                generate_video_subtitles,
+                video.id,
+                request=request,
+                target_video_id=video.id,
+                language=language,
+                dedupe_key=f"video:{video.id}:subtitle-generate:{language}",
+            )
             return Response({
                 "detail": "字幕生成任务已提交",
                 "video_id": video.id,
                 "task_id": async_result.id,
+                "status": "submitted",
             })
         except Exception as e:
             logger.error(f"提交字幕生成任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"提交字幕生成任务失败: {str(e)}"},
+                {"detail": "提交字幕生成任务失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1100,28 +1179,33 @@ class VideoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        if not task_context_matches(
+            task_id,
+            video_id=video.id,
+            user_id=request.user.id,
+            is_admin=request.user.is_staff,
+        ):
+            return Response(
+                {"detail": "任务不存在或无权查询"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         try:
             from celery.result import AsyncResult
             result = AsyncResult(task_id)
 
-            data = {
-                "video_id": video.id,
-                "task_id": task_id,
-                "state": result.state,
-            }
+            data = serialize_task_result(result, target_video_id=video.id)
 
             if result.state == 'SUCCESS':
                 payload = result.result or {}
                 data["result"] = payload
                 data["subtitle_count"] = len(video.subtitles_draft or [])
-            elif result.state in ('FAILURE',):
-                data["error"] = str(result.result)
 
             return Response(data)
         except Exception as e:
             logger.error(f"查询任务状态失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"查询任务状态失败: {str(e)}"},
+                {"detail": "查询任务状态失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1424,7 +1508,7 @@ class MergeChunksView(APIView):
             
             # 保留临时分片，以便用户重试
             return Response(
-                {"detail": f"文件合并失败: {str(e)}"}, 
+                {"detail": "文件合并失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
