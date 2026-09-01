@@ -257,7 +257,7 @@ class ModerationViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"提交审核失败: {str(e)}", exc_info=True)
             return Response(
-                {'detail': f'提交审核失败: {str(e)}'},
+                {'detail': '提交审核失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -313,7 +313,7 @@ class ModerationViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"撤销审核失败: {str(e)}", exc_info=True)
             return Response(
-                {'detail': f'撤销审核失败: {str(e)}'},
+                {'detail': '撤销审核失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -402,7 +402,7 @@ class ModerationViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"重新审核失败: {str(e)}", exc_info=True)
             return Response(
-                {'detail': f'重新审核失败: {str(e)}'},
+                {'detail': '重新审核失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -477,7 +477,7 @@ class ModerationViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"提交审核任务失败: {str(e)}", exc_info=True)
             return Response(
-                {'detail': f'提交审核任务失败: {str(e)}'},
+                {'detail': '提交审核任务失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -516,7 +516,7 @@ class ModerationViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"批量审核失败: {str(e)}", exc_info=True)
             return Response(
-                {'detail': f'批量审核失败: {str(e)}'},
+                {'detail': '批量审核失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -553,7 +553,7 @@ class ModerationViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"查询任务状态失败: {str(e)}", exc_info=True)
             return Response(
-                {'detail': f'查询任务状态失败: {str(e)}'},
+                {'detail': '查询任务状态失败，请稍后重试'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -672,7 +672,7 @@ class SubtitleViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"提交字幕检测任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"提交字幕检测任务失败: {str(e)}"},
+                {"detail": "提交字幕检测任务失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -733,7 +733,7 @@ class SubtitleViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"查询检测状态失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"查询检测状态失败: {str(e)}"},
+                {"detail": "查询检测状态失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -915,7 +915,7 @@ class SubtitleViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"提交字幕生成任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"提交字幕生成任务失败: {str(e)}"},
+                {"detail": "提交字幕生成任务失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -960,6 +960,6 @@ class SubtitleViewSet(viewsets.ViewSet):
         except Exception as e:
             logger.error(f"查询任务状态失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"查询任务状态失败: {str(e)}"},
+                {"detail": "查询任务状态失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

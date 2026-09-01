@@ -131,10 +131,10 @@ class DatabaseManagementViewSet(viewsets.ViewSet):
                 'detail': e.stderr
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            return Response({
-                'error': '备份失败',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {'detail': '备份失败，请稍后重试'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
     
     @action(detail=False, methods=['get'])
     def backups(self, request):
@@ -204,10 +204,10 @@ class DatabaseManagementViewSet(viewsets.ViewSet):
                 'detail': e.stderr
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            return Response({
-                'error': '恢复失败',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {'detail': '恢复失败，请稍后重试'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
     
     @action(detail=False, methods=['post'])
     def optimize(self, request):
@@ -240,7 +240,7 @@ class DatabaseManagementViewSet(viewsets.ViewSet):
                         cursor.execute(f"OPTIMIZE TABLE {table}")
                         results[table] = 'success'
                     except Exception as e:
-                        results[table] = str(e)
+                        results[table] = 'failed'
                 
                 return Response({
                     'message': '数据库优化完成',

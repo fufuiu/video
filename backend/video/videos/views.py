@@ -248,7 +248,7 @@ class VideoViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"触发转码任务失败: {str(e)}")
             return Response(
-                {"detail": f"触发转码任务失败: {str(e)}"},
+                {"detail": "触发转码任务失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -466,7 +466,7 @@ class VideoViewSet(viewsets.ModelViewSet):
                     logger.error(f"清理上传文件失败: {str(cleanup_error)}")
             
             return Response(
-                {"detail": f"视频创建失败: {str(e)}"},
+                {"detail": "视频创建失败，请检查文件和信息后重试"},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -875,7 +875,7 @@ class VideoViewSet(viewsets.ModelViewSet):
                     logger.error(f"清理缩略图失败: {str(cleanup_error)}")
 
             return Response(
-                {"detail": f"缩略图上传失败: {str(e)}"},
+                {"detail": "缩略图上传失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -924,7 +924,7 @@ class VideoViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"字幕检测失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"字幕检测失败: {str(e)}"},
+                {"detail": "字幕检测失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1077,7 +1077,7 @@ class VideoViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"提交字幕生成任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"提交字幕生成任务失败: {str(e)}"},
+                {"detail": "提交字幕生成任务失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1121,7 +1121,7 @@ class VideoViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"查询任务状态失败: {str(e)}", exc_info=True)
             return Response(
-                {"detail": f"查询任务状态失败: {str(e)}"},
+                {"detail": "查询任务状态失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1424,7 +1424,7 @@ class MergeChunksView(APIView):
             
             # 保留临时分片，以便用户重试
             return Response(
-                {"detail": f"文件合并失败: {str(e)}"}, 
+                {"detail": "文件合并失败，请稍后重试"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

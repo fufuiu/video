@@ -4,7 +4,7 @@ from django.test import SimpleTestCase
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory
 
-from core.errors import api_exception_handler
+from core.errors import APIErrorResponseMiddleware, api_exception_handler
 
 
 class HealthEndpointTests(SimpleTestCase):
@@ -89,4 +89,41 @@ class HealthEndpointTests(SimpleTestCase):
         self.assertEqual(payload['error']['message'], '请输入用户名和密码')
         self.assertEqual(payload['error']['request_id'], response['X-Request-ID'])
 
-# Create your tests here.
+    def test_legacy_server_error_response_hides_internal_detail(self):
+        request = APIRequestFactory().get('/api/videos/')
+        request.request_id = 'req-legacy-500'
+
+        def get_response(_request):
+            from rest_framework.response import Response
+
+            return Response(
+                {'detail': 'database password must not leak'},
+                status=500,
+            )
+
+        response = APIErrorResponseMiddleware(get_response)(request)
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(response.data['success'])
+        self.assertEqual(response.data['error']['code'], 'INTERNAL_SERVER_ERROR')
+        self.assertNotIn('password', response.data['error']['message'])
+        self.assertEqual(response.data['error']['request_id'], 'req-legacy-500')
+
+    def test_legacy_field_errors_are_preserved_in_stable_envelope(self):
+        request = APIRequestFactory().post('/api/videos/', {})
+        request.request_id = 'req-legacy-fields'
+
+        def get_response(_request):
+            from rest_framework.response import Response
+
+            return Response(
+                {'title': ['标题不能为空']},
+                status=400,
+            )
+
+        response = APIErrorResponseMiddleware(get_response)(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
+        self.assertEqual(response.data['error']['fields']['title'], ['标题不能为空'])
+        self.assertEqual(response['X-Request-ID'], 'req-legacy-fields')
