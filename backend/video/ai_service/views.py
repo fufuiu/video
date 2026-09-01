@@ -6,7 +6,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from core.task_lifecycle import enqueue_task, serialize_task_result
+from core.task_lifecycle import enqueue_task, serialize_task_result, task_context_matches
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.utils import timezone
@@ -734,6 +734,17 @@ class SubtitleViewSet(viewsets.ViewSet):
                 {"detail": "缺少 task_id"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        if not task_context_matches(
+            task_id,
+            video_id=video.id,
+            user_id=request.user.id,
+            is_admin=request.user.is_staff,
+        ):
+            return Response(
+                {"detail": "任务不存在或无权查询"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         
         try:
             from celery.result import AsyncResult
@@ -965,6 +976,17 @@ class SubtitleViewSet(viewsets.ViewSet):
             return Response(
                 {"detail": "缺少 task_id"},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not task_context_matches(
+            task_id,
+            video_id=video.id,
+            user_id=request.user.id,
+            is_admin=request.user.is_staff,
+        ):
+            return Response(
+                {"detail": "任务不存在或无权查询"},
+                status=status.HTTP_404_NOT_FOUND,
             )
         
         try:

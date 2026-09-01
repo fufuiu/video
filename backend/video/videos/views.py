@@ -34,7 +34,7 @@ import logging
 from rest_framework.views import APIView
 from rest_framework import serializers
 from django.http import HttpResponse
-from core.task_lifecycle import enqueue_task, serialize_task_result
+from core.task_lifecycle import enqueue_task, serialize_task_result, task_context_matches
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +278,17 @@ class VideoViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": "缺少 task_id"},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not task_context_matches(
+            task_id,
+            video_id=video.id,
+            user_id=request.user.id,
+            is_admin=request.user.is_staff,
+        ):
+            return Response(
+                {"detail": "任务不存在或无权查询"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         from celery.result import AsyncResult
@@ -1166,6 +1177,17 @@ class VideoViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": "缺少 task_id"},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not task_context_matches(
+            task_id,
+            video_id=video.id,
+            user_id=request.user.id,
+            is_admin=request.user.is_staff,
+        ):
+            return Response(
+                {"detail": "任务不存在或无权查询"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         try:

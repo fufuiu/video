@@ -17,6 +17,8 @@ logger = logging.getLogger("core.task_lifecycle")
 
 TASK_DEDUPE_PREFIX = "celery_task_dedupe:"
 TASK_DEDUPE_TTL = 2 * 60 * 60
+TASK_CONTEXT_PREFIX = "celery_task_context:"
+TASK_CONTEXT_TTL = 60 * 60
 
 CELERY_TO_API_STATUS = {
     "PENDING": "pending",
@@ -48,6 +50,49 @@ def _dedupe_cache_key(dedupe_key: str) -> str:
     return f"{TASK_DEDUPE_PREFIX}{dedupe_key}"
 
 
+def _task_context_cache_key(task_id: str) -> str:
+    return f"{TASK_CONTEXT_PREFIX}{task_id}"
+
+
+def _store_task_context(task_id, task_name, headers):
+    context = {
+        "task_id": str(task_id),
+        "task_name": task_name,
+        "request_id": headers.get("request_id"),
+        "video_id": headers.get("video_id"),
+        "user_id": headers.get("user_id"),
+    }
+    context = {key: value for key, value in context.items() if value is not None}
+    try:
+        cache.set(_task_context_cache_key(str(task_id)), context, TASK_CONTEXT_TTL)
+    except Exception:
+        logger.warning("task context storage failed task_id=%s", task_id, exc_info=True)
+
+
+def get_task_context(task_id):
+    """Return the short-lived ownership context recorded at dispatch time."""
+    try:
+        context = cache.get(_task_context_cache_key(str(task_id)))
+    except Exception:
+        logger.warning("task context lookup failed task_id=%s", task_id, exc_info=True)
+        return None
+    return dict(context) if isinstance(context, dict) else None
+
+
+def task_context_matches(task_id, *, video_id=None, user_id=None, is_admin=False):
+    """Check whether a caller may inspect a task's status."""
+    context = get_task_context(task_id)
+    if not context:
+        return False
+    if is_admin:
+        return True
+    if video_id is not None and str(context.get("video_id")) != str(video_id):
+        return False
+    if user_id is not None and str(context.get("user_id")) != str(user_id):
+        return False
+    return True
+
+
 def _existing_deduplicated_task(task, task_id):
     """Build an AsyncResult for a task reserved by an earlier submission."""
     return AsyncResult(str(task_id), app=getattr(task, "app", None))
@@ -73,6 +118,9 @@ def enqueue_task(
         headers["request_id"] = request_id
     if target_video_id is not None:
         headers["video_id"] = str(target_video_id)
+    user = getattr(request, "user", None) if request is not None else None
+    if getattr(user, "is_authenticated", False) is True and getattr(user, "pk", None) is not None:
+        headers["user_id"] = str(user.pk)
     if dedupe_key:
         headers["dedupe_key"] = str(dedupe_key)
         cache_key = _dedupe_cache_key(str(dedupe_key))
@@ -95,12 +143,14 @@ def enqueue_task(
         else:
             if reserved:
                 try:
-                    return task.apply_async(
+                    result = task.apply_async(
                         args=args,
                         kwargs=kwargs,
                         headers=headers,
                         task_id=task_id,
                     )
+                    _store_task_context(result.id, getattr(task, "name", None), headers)
+                    return result
                 except Exception:
                     cache.delete(cache_key)
                     raise
@@ -109,7 +159,9 @@ def enqueue_task(
             if existing_id:
                 return _existing_deduplicated_task(task, existing_id)
 
-    return task.apply_async(args=args, kwargs=kwargs, headers=headers)
+    result = task.apply_async(args=args, kwargs=kwargs, headers=headers)
+    _store_task_context(result.id, getattr(task, "name", None), headers)
+    return result
 
 
 def report_task_progress(task, *, current: int, total: int = 100, message: str = "", target_video_id=None):

@@ -8,8 +8,10 @@ from core.errors import APIErrorResponseMiddleware, api_exception_handler
 from core.task_lifecycle import (
     canonical_task_status,
     enqueue_task,
+    get_task_context,
     report_task_progress,
     serialize_task_result,
+    task_context_matches,
 )
 
 
@@ -160,9 +162,11 @@ class HealthEndpointTests(SimpleTestCase):
         self.assertEqual(canonical_task_status('FAILURE'), 'failed')
         self.assertEqual(canonical_task_status('REVOKED'), 'cancelled')
 
-    def test_task_dispatch_carries_request_and_video_context_in_headers(self):
+    @patch('core.task_lifecycle.cache')
+    def test_task_dispatch_carries_request_and_video_context_in_headers(self, mock_cache):
         task = MagicMock()
         request = MagicMock(request_id='req-task-dispatch')
+        request.user = None
 
         enqueue_task(task, 42, request=request, target_video_id=42, language='zh')
 
@@ -174,6 +178,16 @@ class HealthEndpointTests(SimpleTestCase):
             'request_id': 'req-task-dispatch',
             'video_id': '42',
         })
+        mock_cache.set.assert_called_once_with(
+            'celery_task_context:' + str(task.apply_async.return_value.id),
+            {
+                'task_id': str(task.apply_async.return_value.id),
+                'task_name': task.name,
+                'request_id': 'req-task-dispatch',
+                'video_id': '42',
+            },
+            3600,
+        )
 
     @patch('core.task_lifecycle.cache')
     def test_task_dispatch_deduplicates_before_publishing(self, mock_cache):
@@ -229,6 +243,27 @@ class HealthEndpointTests(SimpleTestCase):
         self.assertEqual(policy['time_limit'], 7500)
         self.assertTrue(policy['acks_late'])
         self.assertTrue(policy['reject_on_worker_lost'])
+
+    @patch('core.task_lifecycle.cache')
+    def test_task_context_limits_status_lookup_to_owner_and_video(self, mock_cache):
+        mock_cache.get.return_value = {
+            'task_id': 'task-42',
+            'task_name': 'videos.tasks.process_video',
+            'video_id': '42',
+            'user_id': '7',
+        }
+
+        self.assertEqual(get_task_context('task-42')['video_id'], '42')
+        self.assertTrue(task_context_matches('task-42', video_id=42, user_id=7))
+        self.assertFalse(task_context_matches('task-42', video_id=43, user_id=7))
+        self.assertFalse(task_context_matches('task-42', video_id=42, user_id=8))
+        self.assertTrue(task_context_matches('task-42', video_id=43, user_id=8, is_admin=True))
+
+    @patch('core.task_lifecycle.cache')
+    def test_unknown_task_context_is_not_authorized(self, mock_cache):
+        mock_cache.get.return_value = None
+
+        self.assertFalse(task_context_matches('task-missing', video_id=42, user_id=7))
 
     def test_task_status_serializer_hides_failure_details(self):
         result = MagicMock(
