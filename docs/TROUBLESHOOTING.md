@@ -99,3 +99,30 @@ Identifier 'response' has already been declared
 ## 7. 日志和复现信息
 
 提交问题时附上：操作系统、Python/Node 版本、执行命令、完整首个错误堆栈、相关日志文件名和 `git status -sb`。不要附带 `.env` 内容、密码、token、API Key 或私钥。
+
+## 8. 启动脚本提示前端超时，但页面可以访问
+
+如果启动输出显示：
+
+```text
+⚠ 前端端口启动超时
+```
+
+先分别检查 IPv4、IPv6 和 `localhost`：
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:5173/
+Invoke-WebRequest 'http://[::1]:5173/'
+Invoke-WebRequest http://localhost:5173/
+```
+
+如果只有 `http://[::1]:5173/` 或 `http://localhost:5173/` 返回 200，说明 Vite 监听在 IPv6 回环地址，而不是前端进程崩溃。启动脚本已经同时检查 `127.0.0.1` 和 `::1`，正常情况下应报告“前端端口已就绪”。
+
+一键启动现在还会把服务输出追加到以下文件，便于区分本次启动和历史日志：
+
+- `backend/video/logs/celery_worker.log`
+- `backend/video/logs/celery_beat.log`
+- `backend/video/logs/uvicorn.log`
+- `backend/video/logs/frontend.log`
+
+日志文件中的 `--- <服务名> starting <时间> ---` 是一次新的启动标记。

@@ -478,3 +478,14 @@ UI 优化是正式方向，但在错误协议和核心交互状态稳定后实�
 - 在真实数据库权限可用后执行全量测试，解决 `test_video_dev` 的 MySQL 1044 阻塞。
 
 在上述剩余工作完成前，阶段 1 只能标记为“第一批完成”，不能标记为整体完成。
+
+### 12.3 启动稳定性修复：已完成（2026-09-01）
+
+对应提交：`f10ab59 fix(ops): detect ipv6 readiness and persist startup logs`
+
+已解决：
+
+- 启动脚本只探测 IPv4，导致 Vite 监听 IPv6 时误报前端超时；
+- Windows 分离进程的 stdout/stderr 没有稳定写入服务日志，无法区分本次启动和历史错误。
+
+验证结果：真实启动时 Django、Celery Worker、Celery Beat 和前端均通过就绪检查；`localhost:5173`、`127.0.0.1:8000/api/health/live/` 返回 200；四个服务日志均产生本次启动标记和新内容；验证后服务已停止。
