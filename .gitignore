@@ -160,3 +160,6 @@ models/paddleocr/
 
 # 项目笔记
 markdown/
+
+# 本地 Agent 协作说明
+AGENTS.md
