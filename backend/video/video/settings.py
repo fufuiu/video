@@ -279,6 +279,7 @@ CORS_EXPOSE_HEADERS = [
 
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', REDIS_URL)
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', REDIS_URL)
+CELERY_TASK_DEFAULT_QUEUE = os.environ.get('CELERY_TASK_DEFAULT_QUEUE', 'video_dev')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -496,13 +497,61 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        # httpx logs the full request URL at INFO. Alibaba result URLs are
+        # short-lived signed URLs, so keep them out of application logs.
+        'httpx': {
+            'handlers': ['console', 'django_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'httpcore': {
+            'handlers': ['console', 'django_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
     },
 }
 
-# DeepSeek API 
+# AI Provider selection. Missing cloud credentials must not block Django startup.
+AI_TEXT_PROVIDER = os.environ.get('AI_TEXT_PROVIDER', 'deepseek')
+AI_ASR_PROVIDER = os.environ.get('AI_ASR_PROVIDER', 'disabled')
+AI_OCR_PROVIDER = os.environ.get('AI_OCR_PROVIDER', 'disabled')
+AI_MODERATION_PROVIDER = os.environ.get('AI_MODERATION_PROVIDER', 'disabled')
+AI_STORAGE_PROVIDER = os.environ.get('AI_STORAGE_PROVIDER', 'local')
+AI_PROVIDER_TIMEOUT_SECONDS = _env_int('AI_PROVIDER_TIMEOUT_SECONDS', 60)
+AI_PROVIDER_MAX_RETRIES = _env_int('AI_PROVIDER_MAX_RETRIES', 2)
+AI_TEXT_MAX_INPUT_CHARS = _env_int('AI_TEXT_MAX_INPUT_CHARS', 50000)
+AI_CLOUD_MAX_INPUT_BYTES = _env_int('AI_CLOUD_MAX_INPUT_BYTES', 2 * 1024 * 1024 * 1024)
+AI_OCR_SAMPLE_COUNT = _env_int('AI_OCR_SAMPLE_COUNT', 8)
+
+# DeepSeek API
 DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', '') 
 DEEPSEEK_BASE_URL = os.environ.get('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
-DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')
+DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-v4-flash')
+
+# Alibaba Cloud AI APIs. Access keys are read only when a provider is invoked.
+ALIBABA_CLOUD_ACCESS_KEY_ID = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_ID', '')
+ALIBABA_CLOUD_ACCESS_KEY_SECRET = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET', '')
+ALIBABA_CLOUD_SECURITY_TOKEN = os.environ.get('ALIBABA_CLOUD_SECURITY_TOKEN', '')
+DASHSCOPE_API_KEY = os.environ.get('DASHSCOPE_API_KEY', '')
+DASHSCOPE_REGION = os.environ.get('DASHSCOPE_REGION', 'beijing')
+DASHSCOPE_BASE_URL = os.environ.get('DASHSCOPE_BASE_URL', '')
+DASHSCOPE_ASR_MODEL = os.environ.get('DASHSCOPE_ASR_MODEL', 'fun-asr')
+DASHSCOPE_POLL_INTERVAL_SECONDS = _env_int('DASHSCOPE_POLL_INTERVAL_SECONDS', 10)
+DASHSCOPE_POLL_TIMEOUT_SECONDS = _env_int('DASHSCOPE_POLL_TIMEOUT_SECONDS', 1500)
+AI_AUDIO_EXTRACT_TIMEOUT_SECONDS = _env_int('AI_AUDIO_EXTRACT_TIMEOUT_SECONDS', 900)
+ALIYUN_OSS_ENDPOINT = os.environ.get('ALIYUN_OSS_ENDPOINT', 'oss-cn-beijing.aliyuncs.com')
+ALIYUN_OSS_BUCKET = os.environ.get('ALIYUN_OSS_BUCKET', '')
+ALIYUN_OSS_PREFIX = os.environ.get('ALIYUN_OSS_PREFIX', 'ai-temp/')
+ALIYUN_OSS_SIGNED_URL_TTL_SECONDS = _env_int('ALIYUN_OSS_SIGNED_URL_TTL_SECONDS', 21600)
+ALIYUN_OSS_TEMP_RETENTION_HOURS = _env_int('ALIYUN_OSS_TEMP_RETENTION_HOURS', 24)
+ALIYUN_OCR_ENDPOINT = os.environ.get('ALIYUN_OCR_ENDPOINT', 'ocr-api.cn-hangzhou.aliyuncs.com')
+ALIYUN_OCR_MAX_IMAGE_BYTES = _env_int('ALIYUN_OCR_MAX_IMAGE_BYTES', 10 * 1024 * 1024)
+ALIYUN_GREEN_REGION = os.environ.get('ALIYUN_GREEN_REGION', 'cn-shanghai')
+ALIYUN_GREEN_ENDPOINT = os.environ.get('ALIYUN_GREEN_ENDPOINT', 'green-cip.cn-shanghai.aliyuncs.com')
+ALIYUN_VIDEO_MODERATION_SERVICE = os.environ.get('ALIYUN_VIDEO_MODERATION_SERVICE', 'videoDetection')
+ALIYUN_MODERATION_POLL_INTERVAL_SECONDS = _env_int('ALIYUN_MODERATION_POLL_INTERVAL_SECONDS', 15)
+ALIYUN_MODERATION_POLL_TIMEOUT_SECONDS = _env_int('ALIYUN_MODERATION_POLL_TIMEOUT_SECONDS', 1800)
 
 
 # NSFW 检测模型配置

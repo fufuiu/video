@@ -5,11 +5,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory
 
 from core.errors import APIErrorResponseMiddleware, api_exception_handler
+from core.models import TaskExecution
 from core.task_lifecycle import (
     canonical_task_status,
     enqueue_task,
     get_task_context,
     report_task_progress,
+    retry_task_execution,
     serialize_task_result,
     task_context_matches,
 )
@@ -162,8 +164,9 @@ class HealthEndpointTests(SimpleTestCase):
         self.assertEqual(canonical_task_status('FAILURE'), 'failed')
         self.assertEqual(canonical_task_status('REVOKED'), 'cancelled')
 
+    @patch('core.task_lifecycle._persist_task_context')
     @patch('core.task_lifecycle.cache')
-    def test_task_dispatch_carries_request_and_video_context_in_headers(self, mock_cache):
+    def test_task_dispatch_carries_request_and_video_context_in_headers(self, mock_cache, mock_persist):
         task = MagicMock()
         request = MagicMock(request_id='req-task-dispatch')
         request.user = None
@@ -200,8 +203,9 @@ class HealthEndpointTests(SimpleTestCase):
         task.apply_async.assert_not_called()
         mock_cache.add.assert_not_called()
 
+    @patch('core.task_lifecycle._persist_task_context')
     @patch('core.task_lifecycle.cache')
-    def test_first_deduplicated_dispatch_reserves_context_and_task_id(self, mock_cache):
+    def test_first_deduplicated_dispatch_reserves_context_and_task_id(self, mock_cache, mock_persist):
         task = MagicMock()
         task.apply_async.return_value.id = 'task-new'
         mock_cache.get.return_value = None
@@ -263,9 +267,13 @@ class HealthEndpointTests(SimpleTestCase):
     def test_unknown_task_context_is_not_authorized(self, mock_cache):
         mock_cache.get.return_value = None
 
-        self.assertFalse(task_context_matches('task-missing', video_id=42, user_id=7))
+        with patch('core.models.TaskExecution.objects.filter') as mock_filter:
+            mock_filter.return_value.values.return_value.first.return_value = None
+            self.assertFalse(task_context_matches('task-missing', video_id=42, user_id=7))
 
-    def test_task_status_serializer_hides_failure_details(self):
+    @patch('core.models.TaskExecution.objects.filter')
+    def test_task_status_serializer_hides_failure_details(self, mock_filter):
+        mock_filter.return_value.first.return_value = None
         result = MagicMock(
             id='task-failed',
             name='videos.tasks.process_video',
@@ -282,7 +290,36 @@ class HealthEndpointTests(SimpleTestCase):
         self.assertEqual(payload['error']['code'], 'TASK_FAILED')
         self.assertNotIn('secret', payload['error']['message'])
 
-    def test_task_progress_is_published_as_safe_metadata(self):
+    @patch('core.models.TaskExecution.objects.filter')
+    def test_task_status_serializer_returns_persisted_safe_provider_error(self, mock_filter):
+        stored = MagicMock(
+            task_name='ai_service.tasks.generate_video_subtitles',
+            request_id='',
+            video_id=42,
+            progress={},
+            status='failed',
+            error_code='AI_PROVIDER_NOT_CONFIGURED',
+            error_message='云端语音识别服务尚未开通',
+            can_retry=False,
+            celery_state='FAILURE',
+        )
+        mock_filter.return_value.first.return_value = stored
+        result = MagicMock(
+            id='task-failed',
+            name='ai_service.tasks.generate_video_subtitles',
+            state='FAILURE',
+            info=RuntimeError('secret path'),
+            result=RuntimeError('secret path'),
+        )
+        result.ready.return_value = True
+
+        payload = serialize_task_result(result, target_video_id=42)
+
+        self.assertEqual(payload['error']['code'], 'AI_PROVIDER_NOT_CONFIGURED')
+        self.assertEqual(payload['error']['message'], '云端语音识别服务尚未开通')
+
+    @patch('core.task_lifecycle._persist_task_state')
+    def test_task_progress_is_published_as_safe_metadata(self, mock_persist):
         task = MagicMock()
         task.request.headers = {'request_id': 'req-progress'}
         task.request.id = 'task-progress'
@@ -299,4 +336,57 @@ class HealthEndpointTests(SimpleTestCase):
                 'video_id': 42,
                 'request_id': 'req-progress',
             },
+        )
+
+    def test_task_execution_only_allows_one_retry_for_failed_allowlisted_task(self):
+        execution = TaskExecution(
+            task_id='task-failed',
+            task_name='ai_service.tasks.generate_video_subtitles',
+            status='failed',
+            retryable=True,
+        )
+
+        self.assertTrue(execution.can_retry)
+        execution.retry_dispatched_at = object()
+        self.assertFalse(execution.can_retry)
+        execution.retry_dispatched_at = None
+        execution.status = 'processing'
+        self.assertFalse(execution.can_retry)
+
+    @patch('core.task_lifecycle.enqueue_task')
+    @patch('core.task_lifecycle.current_app')
+    @patch('core.models.TaskExecution.objects.filter')
+    def test_failed_allowlisted_task_can_be_redispatched_with_original_owner(
+        self,
+        mock_filter,
+        mock_current_app,
+        mock_enqueue_task,
+    ):
+        execution = TaskExecution(
+            id=1,
+            task_id='task-failed',
+            task_name='ai_service.tasks.generate_video_subtitles',
+            video_id=42,
+            user_id=7,
+            status='failed',
+            retryable=True,
+            parameters={'args': [42], 'kwargs': {'language': 'zh'}},
+        )
+        mock_filter.return_value.update.return_value = 1
+        task = MagicMock()
+        mock_current_app.tasks.get.return_value = task
+        mock_enqueue_task.return_value.id = 'task-retry'
+        request = MagicMock()
+
+        result = retry_task_execution(execution, request=request)
+
+        self.assertEqual(result.id, 'task-retry')
+        mock_enqueue_task.assert_called_once_with(
+            task,
+            42,
+            request=request,
+            target_video_id=42,
+            target_user_id=7,
+            retry_of='task-failed',
+            language='zh',
         )

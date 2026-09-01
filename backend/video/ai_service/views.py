@@ -19,7 +19,7 @@ from .serializers import (
     FrameRecognitionResultSerializer,
     VideoSummarySerializer
 )
-from .services import WhisperService, OCRService
+from .services import OCRService
 
 logger = logging.getLogger(__name__)
 
@@ -621,19 +621,32 @@ class SummaryViewSet(viewsets.ViewSet):
         AI 视频摘要
         生成视频内容摘要和关键帧
         """
-        # TODO: 实现视频摘要逻辑
-        result = {
-            'video_id': pk,
-            'summary': 'AI 视频摘要功能开发中',
-            'key_frames': [],
-            'tags': ['待分析'],
-            'duration': 0.0
-        }
-        
-        serializer = VideoSummarySerializer(data=result)
-        if serializer.is_valid():
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        from videos.models import Video
+        from .tasks import summarize_video_task
+
+        video = get_object_or_404(Video, id=pk)
+        if video.user_id != request.user.id and not request.user.is_staff:
+            return Response(
+                {'error': {'code': 'PERMISSION_DENIED', 'message': '您无权为该视频生成摘要'}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        result = enqueue_task(
+            summarize_video_task,
+            video.id,
+            request=request,
+            target_video_id=video.id,
+            dedupe_key=f'video:{video.id}:summary',
+        )
+        return Response(
+            {
+                'message': '视频摘要任务已提交',
+                'video_id': video.id,
+                'task_id': result.id,
+                'status': 'pending',
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class SubtitleViewSet(viewsets.ViewSet):

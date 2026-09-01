@@ -77,16 +77,37 @@ redis://:password@host:6379/0
 
 Redis 连接验证应包含认证，而不只是 TCP 端口检查。若密码包含 URL 特殊字符，先进行 URL 编码。项目默认使用 DB 0/1/2，见 [架构说明](ARCHITECTURE.md)。
 
-## 5. 前端构建失败
+如果同一个远程 Redis 被多台开发机共用，还必须为每套环境配置不同的
+`CELERY_TASK_DEFAULT_QUEUE`。可用 `celery -A video inspect ping` 查看在线 Worker；
+不同版本的 Worker 共用默认 `celery` 队列时，任务可能被旧代码抢走，表现为页面随机失败、
+本机任务历史一直停在等待中。
 
-当前已知错误：
+## 5. 前端构建问题
+
+历史上曾出现以下错误：
 
 ```text
 src/views/search/index.vue
 Identifier 'response' has already been declared
 ```
 
-搜索函数中存在两次 `const response` 声明。修复时先确认究竟使用 `/videos/videos/` 还是 `/videos/search/`，不要只删除一行而改变搜索业务语义；修复后重新执行 `npm run build`。
+该问题源于搜索函数中重复声明 `const response`，目前已经确认使用 `/videos/videos/` 并完成修复；截至 2026-09-01，`npm run build` 已通过，仅保留大 chunk 性能提示。
+
+如果再次出现同名变量错误，先检查分支合并是否重新带回旧实现；如果出现其他构建错误，以本次命令输出中的首个错误为准，不要把历史错误当作当前原因。修复后重新执行 `npm run build`。
+
+## 5.1 云端 AI 提示未配置或不可用
+
+先运行 `backend\venv\Scripts\python.exe backend\video\manage.py check_ai_config`。该命令不会发送真实 API 请求，只检查当前选择的 Provider、凭据字段和可选 SDK是否齐全。
+
+- ASR 或视频审核启用后，`AI_STORAGE_PROVIDER` 必须设为 `aliyun`，并配置私有 OSS Bucket；
+- OCR/内容安全提示缺 SDK 时，只在真实云端 Worker 安装 `backend/video/requirements-cloud.txt`；
+- OCR 返回 `ocrServiceNotOpen` 说明请求和 AccessKey 已到达阿里云，但账号尚未开通 OCR；
+- 内容安全返回 `No permissions` 说明需要开通对应服务或为当前 RAM 身份补充调用权限；
+- 百炼需要 API Key 和工作空间专属 `DASHSCOPE_BASE_URL`，两者缺一不可；
+- 正式环境不要为“消除错误”切到 Mock，Mock 只能用于测试；
+- 日志只记录 request ID、task ID 和错误码，不要粘贴密钥或完整签名 URL。
+
+完整开通和验收步骤见[云端 AI 配置手册](AI_CLOUD_CONFIGURATION.md)。
 
 ## 6. 一键启动失败
 

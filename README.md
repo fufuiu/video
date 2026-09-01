@@ -11,6 +11,7 @@
 | 调接口和看鉴权方式 | [API 说明](docs/API.md) |
 | 团队提交、分支和检查规范 | [贡献规范](CONTRIBUTING.md) |
 | 启动报错排查 | [排错手册](docs/TROUBLESHOOTING.md) |
+| 配置 DeepSeek、阿里云 AI 和 OSS | [云端 AI 配置手册](docs/AI_CLOUD_CONFIGURATION.md) |
 | 密钥和敏感配置要求 | [安全规范](SECURITY.md) |
 
 `markdown/` 目录是已有的 Django/Redis 学习笔记，不是本项目的唯一操作手册。新成员应先阅读本文和 `docs/DEVELOPMENT.md`。
@@ -83,13 +84,15 @@ py -3.12 stop_dev.py
 
 ## 当前已知状态
 
-以下是本次交接时实际验证过的状态，不代表所有业务流程已经验收：
+以下是截至 2026-09-01 已记录并验证过的状态，不代表所有业务流程已经验收：
 
 - Python 3.12 虚拟环境已创建，Django `manage.py check` 通过。
-- Redis 远程认证连接通过。
-- MySQL 服务器可达，但当前账号尚未获得目标数据库权限；迁移和业务接口还不能验证。
-- `npm ci` 已通过；`npm run build` 当前会因 `src/views/search/index.vue` 中重复声明 `response` 失败。
-- 原始 Python requirements 仍包含 GPU 版 Paddle 依赖，Windows/无 NVIDIA GPU 环境需按开发指南使用 CPU 方案。
+- Redis 远程认证连接曾验证通过；在新的团队目标环境中仍需重新执行认证连接和 `PING`。
+- 业务数据库连接检查和迁移计划检查已通过；全量 Django 测试仍因当前账号不能创建 `test_video_dev` 测试库而受到 MySQL 1044 权限错误阻塞。
+- `npm ci`、前端 API 错误测试和 `npm run build` 已通过；构建仅保留大 chunk 性能提示。
+- AI 运行主路径已切换为 DeepSeek/阿里云 Provider；原始 requirements 和旧本地模型代码暂作迁移回退保留，待真实云端验收后再删除重依赖。
+- 云端 AI 已完成真实小样本验收：DeepSeek、OSS 临时交换和百炼 Fun-ASR 可用，异步链路已生成并写回 43 条字幕；阿里云 OCR 尚未开通，内容安全尚缺服务开通或 RAM 权限。OSS 当前不保存业务原视频，只保存 AI 任务的临时对象。
+- 登录、上传、转码、审核、发布和播放的完整主链路尚未完成端到端验收，不能用单项检查通过代替整体可交付结论。
 
 ## 贡献前必读
 

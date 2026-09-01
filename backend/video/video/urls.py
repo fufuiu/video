@@ -63,6 +63,7 @@ urlpatterns = [
     path('api/captcha/', include('captcha.urls')),
     
     # 管理员API
+    path('api/admin/', include('core.urls')),
     path('api/admin/', include('videos.admin_urls')),
     
     # API文档

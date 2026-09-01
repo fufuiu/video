@@ -2,13 +2,15 @@
 AI 服务异步任务
 使用 Celery shared_task 装饰器定义任务
 """
+import asyncio
 import os
+import time
 from pathlib import Path
 from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 from .models import ModerationResult, VideoSummary
-from .services import WhisperService, OCRService
+from .services import OCRService
 from core.task_lifecycle import enqueue_task, report_task_progress
 import logging
 
@@ -18,7 +20,7 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True, max_retries=1, default_retry_delay=60)
 def generate_video_subtitles(self, video_id, language='auto'):
     """
-    生成视频字幕（使用 Whisper）
+    使用配置的云端 ASR Provider 生成视频字幕。
     
     Args:
         video_id: 视频ID
@@ -30,42 +32,75 @@ def generate_video_subtitles(self, video_id, language='auto'):
     report_task_progress(self, current=0, message='开始生成字幕', target_video_id=video_id)
     logger.info(f"[Task {task_id}] 开始生成字幕: video_id={video_id}")
     
-    tmp_wav_path = None
-    whisper = None
+    from ai_service.media import extract_audio_for_asr
+    from ai_service.providers import ProviderError, ProviderJob, ProviderUnavailableError, get_provider
+    from ai_service.storage import get_temporary_storage
+
+    tmp_audio_path = None
+    provider = None
+    storage = None
+    stored_object = None
+    provider_finished = False
     
     try:
         video = Video.objects.get(id=video_id)
         
         if not video.video_file:
-            logger.error(f"[Task {task_id}] 视频文件不存在")
-            return {"status": "error", "reason": "file_not_found"}
+            raise FileNotFoundError('视频文件不存在')
         
         video_file_path = video.video_file.path
+        max_input_bytes = int(getattr(settings, 'AI_CLOUD_MAX_INPUT_BYTES', 2 * 1024 * 1024 * 1024))
+        if os.path.exists(video_file_path) and Path(video_file_path).stat().st_size > max_input_bytes:
+            raise ProviderUnavailableError('视频超过云端处理大小限制', provider='storage', retryable=False)
         if not os.path.exists(video_file_path):
-            logger.error(f"[Task {task_id}] 视频文件路径无效: {video_file_path}")
-            return {"status": "error", "reason": "file_not_found"}
+            raise FileNotFoundError('视频文件路径无效')
         
         # 创建临时目录
         tmp_dir = Path(settings.MEDIA_ROOT) / 'tmp'
         tmp_dir.mkdir(parents=True, exist_ok=True)
-        tmp_wav_path = tmp_dir / f"whisper_{video_id}_{task_id}.wav"
-        
-        # 初始化 Whisper 服务
-        whisper = WhisperService()
-        
-        # 提取音频
-        logger.info(f"[Task {task_id}] 提取音频...")
-        whisper.extract_audio(video_file_path, tmp_wav_path)
-        
-        # 生成字幕
-        logger.info(f"[Task {task_id}] 生成字幕...")
-        result = whisper.generate_subtitles(str(tmp_wav_path), language=language)
+        tmp_audio_path = tmp_dir / f"asr_{video_id}_{task_id}.mp3"
+
+        logger.info('[Task %s] 提取云端识别音频', task_id)
+        extract_audio_for_asr(video_file_path, tmp_audio_path)
+        storage = get_temporary_storage()
+        stored_object = storage.upload_file(tmp_audio_path, purpose='asr')
+        file_url = storage.signed_download_url(stored_object.key)
+        provider = get_provider('asr')
+        job = provider.submit(file_url, language=language)
+        report_task_progress(
+            self,
+            current=15,
+            message='云端字幕任务已提交',
+            target_video_id=video_id,
+            metadata={'provider': job.provider, 'provider_job_id': job.job_id},
+        )
+
+        deadline = time.monotonic() + int(getattr(settings, 'DASHSCOPE_POLL_TIMEOUT_SECONDS', 1500))
+        poll_interval = max(1, int(getattr(settings, 'DASHSCOPE_POLL_INTERVAL_SECONDS', 10)))
+        while True:
+            result = provider.result(job.job_id)
+            if not isinstance(result, ProviderJob):
+                provider_finished = True
+                break
+            if time.monotonic() >= deadline:
+                raise ProviderUnavailableError('语音识别任务等待超时', provider=job.provider)
+            time.sleep(poll_interval)
+
+        subtitles = [
+            {
+                'startTime': segment.start,
+                'endTime': segment.end,
+                'text': segment.text,
+                'translation': '',
+            }
+            for segment in result.segments
+        ]
         
         # 更新视频字幕信息
-        video.subtitles_draft = result['subtitles']
-        video.has_subtitle = len(result['subtitles']) > 0
+        video.subtitles_draft = subtitles
+        video.has_subtitle = len(subtitles) > 0
         video.subtitle_type = 'soft' if video.has_subtitle else 'none'
-        video.subtitle_language = result['language']
+        video.subtitle_language = result.language
         video.subtitle_detected_at = timezone.now()
         
         if video.status == 'uploading':
@@ -82,41 +117,57 @@ def generate_video_subtitles(self, video_id, language='auto'):
             'is_published'
         ])
         
-        logger.info(f"[Task {task_id}] 字幕生成完成: count={result['count']}, language={result['language']}")
+        logger.info('[Task %s] 字幕生成完成 count=%s language=%s', task_id, len(subtitles), result.language)
         
         report_task_progress(self, current=100, message='字幕生成完成', target_video_id=video_id)
         return {
             "status": "success",
             "video_id": video_id,
-            "count": result['count'],
-            "subtitle_language": result['language'],
+            "count": len(subtitles),
+            "subtitle_language": result.language,
+            "provider": result.provider,
+            "provider_request_id": result.request_id,
         }
         
     except Video.DoesNotExist:
-        logger.error(f"[Task {task_id}] 视频不存在: video_id={video_id}")
-        return {"status": "error", "reason": "video_not_found"}
-    
+        logger.error('[Task %s] 视频不存在 video_id=%s', task_id, video_id)
+        raise
+    except ProviderError as exc:
+        logger.warning(
+            '[Task %s] 字幕 Provider 失败 provider=%s code=%s',
+            task_id,
+            exc.provider,
+            exc.code,
+        )
+        if exc.retryable and self.request.retries < self.max_retries:
+            raise self.retry(exc=exc)
+        raise
     except Exception as e:
-        logger.error(f"[Task {task_id}] 字幕生成失败: {str(e)}", exc_info=True)
+        logger.error('[Task %s] 字幕生成失败 exception_type=%s', task_id, type(e).__name__, exc_info=True)
         
         if self.request.retries < self.max_retries:
             logger.warning(f"[Task {task_id}] 将重试...")
             raise self.retry(exc=e)
         
-        return {"status": "error", "reason": str(e)}
+        raise
     
     finally:
         # 清理临时文件
-        if tmp_wav_path and os.path.exists(tmp_wav_path):
+        if tmp_audio_path and os.path.exists(tmp_audio_path):
             try:
-                os.remove(tmp_wav_path)
+                os.remove(tmp_audio_path)
                 logger.info(f"[Task {task_id}] 已删除临时音频文件")
             except Exception:
                 pass
-        
-        # 释放 Whisper 模型
-        if whisper:
-            whisper.release_model()
+        if storage and stored_object and provider_finished:
+            try:
+                storage.delete(stored_object.key)
+            except Exception:
+                logger.warning('[Task %s] OSS 临时文件即时清理失败，将由生命周期规则清理', task_id)
+        if provider:
+            close = getattr(provider, 'close', None)
+            if callable(close):
+                close()
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=120)
@@ -264,10 +315,15 @@ def detect_video_subtitle(self, video_id):
         }
     
     except Exception as e:
-        logger.error(f"[Task {task_id}] 字幕检测失败: {str(e)}", exc_info=True)
+        logger.error(
+            '[Task %s] 字幕检测失败 exception_type=%s',
+            task_id,
+            type(e).__name__,
+            exc_info=True,
+        )
         
         # 如果还有重试次数，继续重试
-        if self.request.retries < self.max_retries:
+        if getattr(e, 'retryable', True) and self.request.retries < self.max_retries:
             logger.warning(f"[Task {task_id}] 将重试...")
             raise self.retry(exc=e)
         
@@ -282,11 +338,16 @@ def detect_video_subtitle(self, video_id):
             video.save(update_fields=['has_subtitle', 'subtitle_type', 'subtitle_language', 'status', 'is_published'])
             logger.warning(f"[Task {task_id}] 字幕检测失败，已设置为无字幕状态，允许用户继续")
         except Exception as save_error:
-            logger.error(f"[Task {task_id}] 保存失败状态时出错: {save_error}")
+            logger.error(
+                '[Task %s] 保存字幕失败状态出错 exception_type=%s',
+                task_id,
+                type(save_error).__name__,
+            )
         
         return {
             "status": "error",
-            "reason": str(e),
+            "reason": getattr(e, "code", "AI_PROVIDER_UNAVAILABLE"),
+            "message": getattr(e, "safe_message", "字幕检测失败，请稍后重试"),
             "allow_continue": True,
             "subtitle_info": {
                 "has_subtitle": False,
@@ -296,8 +357,7 @@ def detect_video_subtitle(self, video_id):
         }
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=120)
-def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6, fps=1):
+def _legacy_local_moderate_video(self, video_id, threshold_level='medium', threshold=0.6, fps=1):
     """
     异步执行视频 NSFW 内容审核
     
@@ -488,27 +548,228 @@ def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6,
             pass
 
 
-@shared_task
-def summarize_video_task(video_id):
-    """异步生成视频摘要"""
+@shared_task(bind=True, max_retries=2, default_retry_delay=120)
+def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6, fps=1):
+    """Moderate a video through the configured cloud provider and temporary storage."""
+    from ai_service.providers import ProviderError, ProviderJob, ProviderUnavailableError, get_provider
+    from ai_service.storage import get_temporary_storage
+    from ai_service.providers import ProviderError
+    from videos.models import Video
+
+    moderation = None
+    provider = None
+    storage = None
+    stored = None
+    provider_finished = False
+
     try:
-        logger.info(f"开始生成视频 {video_id} 摘要")
-        
-        # TODO: 实现视频摘要逻辑
-        summary, created = VideoSummary.objects.get_or_create(
+        report_task_progress(self, current=0, message='开始云端内容审核', target_video_id=video_id)
+        video = Video.objects.get(id=video_id)
+        if not video.video_file:
+            raise ProviderUnavailableError('视频文件不存在', provider='storage', retryable=False)
+        video_file_path = Path(video.video_file.path)
+        max_input_bytes = int(getattr(settings, 'AI_CLOUD_MAX_INPUT_BYTES', 2 * 1024 * 1024 * 1024))
+        if video_file_path.is_file() and video_file_path.stat().st_size > max_input_bytes:
+            raise ProviderUnavailableError('视频超过云端处理大小限制', provider='storage', retryable=False)
+        if not video_file_path.is_file():
+            raise ProviderUnavailableError('视频文件不存在', provider='storage', retryable=False)
+
+        moderation, _created = ModerationResult.objects.update_or_create(
+            video_id=video_id,
+            defaults={'status': 'processing', 'error_message': ''},
+        )
+        storage = get_temporary_storage()
+        stored = storage.upload_file(video_file_path, purpose='moderation/video')
+        file_url = storage.signed_download_url(stored.key)
+        provider = get_provider('moderation')
+        job = provider.submit(file_url)
+        report_task_progress(
+            self,
+            current=10,
+            message='云端审核任务已提交',
+            target_video_id=video_id,
+            metadata={'provider': job.provider, 'provider_job_id': job.job_id},
+        )
+
+        deadline = time.monotonic() + int(
+            getattr(settings, 'ALIYUN_MODERATION_POLL_TIMEOUT_SECONDS', 1800)
+        )
+        poll_interval = max(
+            1, int(getattr(settings, 'ALIYUN_MODERATION_POLL_INTERVAL_SECONDS', 15))
+        )
+        while True:
+            cloud_result = provider.result(job.job_id)
+            if not isinstance(cloud_result, ProviderJob):
+                provider_finished = True
+                break
+            if time.monotonic() >= deadline:
+                raise ProviderUnavailableError('阿里云视频审核等待超时', provider=job.provider)
+            report_task_progress(
+                self,
+                current=50,
+                message='云端内容审核处理中',
+                target_video_id=video_id,
+                metadata={'provider': job.provider, 'provider_job_id': job.job_id},
+            )
+            time.sleep(poll_interval)
+
+        result_mapping = {'safe': 'safe', 'review': 'uncertain', 'reject': 'unsafe'}
+        moderation_result = result_mapping.get(cloud_result.decision, 'uncertain')
+        confidence = max(0.0, min(1.0, float(cloud_result.confidence or 0.0)))
+        flagged_frames = [
+            {
+                'timestamp': item.get('offset', 0),
+                'label': item.get('name', ''),
+                'risk_level': item.get('risk_level', ''),
+                'confidence': item.get('confidence', 0),
+            }
+            for item in cloud_result.labels
+        ]
+        moderation.status = 'completed'
+        moderation.result = moderation_result
+        moderation.confidence = confidence
+        moderation.neutral_score = confidence if moderation_result == 'safe' else 0.0
+        moderation.low_score = confidence if moderation_result != 'safe' else 0.0
+        moderation.medium_score = confidence if moderation_result in {'uncertain', 'unsafe'} else 0.0
+        moderation.high_score = confidence if moderation_result == 'unsafe' else 0.0
+        moderation.flagged_frames = flagged_frames
+        moderation.details = {
+            'provider': cloud_result.provider,
+            'provider_job_id': job.job_id,
+            'request_id': cloud_result.request_id,
+            'decision': cloud_result.decision,
+            'labels': cloud_result.labels,
+            'input_bytes': stored.size,
+            'legacy_request': {
+                'threshold_level': threshold_level,
+                'threshold': threshold,
+                'fps': fps,
+            },
+            'progress': 100,
+        }
+        moderation.error_message = ''
+        moderation.save()
+        report_task_progress(
+            self,
+            current=100,
+            message='云端内容审核完成',
+            target_video_id=video_id,
+            metadata={'provider': cloud_result.provider, 'provider_job_id': job.job_id},
+        )
+        return {
+            'video_id': video_id,
+            'status': 'completed',
+            'result': moderation_result,
+            'confidence': confidence,
+            'flagged_count': len(flagged_frames),
+            'provider': cloud_result.provider,
+        }
+    except Video.DoesNotExist:
+        return {'video_id': video_id, 'status': 'error', 'reason': 'video_not_found'}
+    except ProviderError as exc:
+        logger.warning(
+            'Cloud moderation failed video_id=%s provider=%s code=%s',
+            video_id,
+            exc.provider,
+            exc.code,
+        )
+        if moderation:
+            moderation.status = 'failed'
+            moderation.error_message = exc.safe_message
+            moderation.save(update_fields=['status', 'error_message'])
+        if exc.retryable and self.request.retries < self.max_retries:
+            raise self.retry(exc=exc)
+        return {'video_id': video_id, 'status': 'error', 'reason': exc.code}
+    except Exception as exc:
+        logger.exception(
+            'Unexpected cloud moderation failure video_id=%s exception_type=%s',
+            video_id,
+            type(exc).__name__,
+        )
+        if moderation:
+            moderation.status = 'failed'
+            moderation.error_message = '内容审核暂时不可用'
+            moderation.save(update_fields=['status', 'error_message'])
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=exc)
+        return {'video_id': video_id, 'status': 'error', 'reason': 'AI_PROVIDER_UNAVAILABLE'}
+    finally:
+        if provider_finished and storage and stored:
+            try:
+                storage.delete(stored.key)
+            except Exception as cleanup_error:
+                logger.warning(
+                    'Temporary moderation object cleanup failed exception_type=%s',
+                    type(cleanup_error).__name__,
+                )
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=120)
+def summarize_video_task(self, video_id):
+    """Generate a real summary and tags through the configured text Provider."""
+    from ai_service.providers import ProviderError
+    from ai_service.services.deepseek_service import DeepSeekService
+    from videos.models import Video
+
+    try:
+        report_task_progress(self, current=0, message='开始生成摘要', target_video_id=video_id)
+        video = Video.objects.get(id=video_id)
+        subtitle_text = '\n'.join(
+            str(item.get('text', '')).strip()
+            for item in (video.subtitles_draft or [])
+            if isinstance(item, dict) and item.get('text')
+        )
+        max_chars = int(getattr(settings, 'AI_TEXT_MAX_INPUT_CHARS', 50000))
+        source_text = (
+            f'标题：{video.title}\n描述：{video.description or ""}\n字幕：{subtitle_text}'
+        )[:max_chars]
+
+        service = DeepSeekService()
+
+        async def generate_metadata():
+            return await asyncio.gather(
+                service.generate_video_summary(source_text),
+                service.generate_video_tags(video.title, video.description or '', subtitle_text[:max_chars]),
+            )
+
+        summary_text, tags = asyncio.run(generate_metadata())
+        summary, _created = VideoSummary.objects.update_or_create(
             video_id=video_id,
             defaults={
-                'summary': 'AI 生成的摘要',
+                'summary': summary_text,
                 'key_frames': [],
-                'auto_tags': []
-            }
+                'auto_tags': tags,
+                'details': {
+                    'provider': getattr(service.provider, 'name', 'configured-provider'),
+                    'model': service.model,
+                    'source': 'subtitle' if subtitle_text else 'metadata',
+                },
+            },
         )
-        
-        logger.info(f"视频 {video_id} 摘要生成完成")
-        return {'video_id': video_id, 'status': 'completed'}
-        
+
+        report_task_progress(self, current=100, message='摘要生成完成', target_video_id=video_id)
+        logger.info('视频摘要生成完成 video_id=%s provider=%s', video_id, summary.details.get('provider'))
+        return {
+            'video_id': video_id,
+            'status': 'completed',
+            'summary_id': summary.id,
+            'tag_count': len(tags),
+        }
+    except Video.DoesNotExist:
+        logger.warning('视频摘要任务目标不存在 video_id=%s', video_id)
+        raise
+    except ProviderError as exc:
+        logger.warning(
+            '视频摘要 Provider 失败 video_id=%s provider=%s code=%s',
+            video_id,
+            exc.provider,
+            exc.code,
+        )
+        if exc.retryable and self.request.retries < self.max_retries:
+            raise self.retry(exc=exc)
+        raise
     except Exception as e:
-        logger.error(f"视频 {video_id} 摘要生成失败: {str(e)}")
+        logger.exception('视频摘要生成失败 video_id=%s exception_type=%s', video_id, type(e).__name__)
         raise
 
 
@@ -537,7 +798,15 @@ def batch_moderate_videos(video_ids, threshold_level='medium', threshold=0.6, fp
             )
             results.append({'video_id': video_id, 'task_id': result.id, 'status': 'submitted'})
         except Exception as e:
-            logger.error(f"提交视频 {video_id} 审核任务失败: {str(e)}")
-            results.append({'video_id': video_id, 'error': str(e), 'status': 'failed'})
+            logger.error(
+                '提交视频 %s 审核任务失败 exception_type=%s',
+                video_id,
+                type(e).__name__,
+            )
+            results.append({
+                'video_id': video_id,
+                'error': 'AI_TASK_DISPATCH_FAILED',
+                'status': 'failed',
+            })
     
     return results

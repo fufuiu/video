@@ -55,4 +55,18 @@ class IsSuperAdmin(permissions.BasePermission):
         if not is_super:
             logger.warning(f"IsSuperAdmin: User {request.user.username} is not superadmin (role={user_role})")
         
-        return is_super 
+        return is_super
+
+
+class IsProjectAdmin(permissions.BasePermission):
+    """Allow only authenticated project administrators."""
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return False
+        return bool(
+            user.is_staff
+            or user.is_superuser
+            or getattr(user, 'role', None) in {'admin', 'superadmin'}
+        )
