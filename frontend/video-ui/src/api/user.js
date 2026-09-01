@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getToken, getRefreshToken, setToken, removeToken } from '@/utils/auth';
+import { normalizeApiError } from './errors';
 
 // Create axios instance
 const service = axios.create({
@@ -10,26 +11,10 @@ const service = axios.create({
   }
 });
 
-const DEFAULT_ERROR_MESSAGES = {
-  NETWORK_ERROR: '网络连接失败，请检查网络后重试',
-  TIMEOUT: '请求超时，请稍后重试',
-  AUTHENTICATION_REQUIRED: '登录状态已失效，请重新登录',
-  PERMISSION_DENIED: '没有权限执行此操作',
-  NOT_FOUND: '请求的内容不存在',
-  INTERNAL_SERVER_ERROR: '服务器暂时无法处理请求，请稍后重试'
-};
-
 function normalizeError(error) {
   const response = error?.response;
   const data = response?.data;
-  const nested = data?.error;
-  const status = response?.status;
-  const code = nested?.code || data?.code || (status === 401 ? 'AUTHENTICATION_REQUIRED' : null)
-    || (error?.code === 'ECONNABORTED' ? 'TIMEOUT' : null)
-    || (!response ? 'NETWORK_ERROR' : 'REQUEST_FAILED');
-  const fields = nested?.fields || data?.fields || (data && typeof data === 'object' ? data : {});
-  const message = nested?.message || data?.message || data?.detail || data?.error
-    || DEFAULT_ERROR_MESSAGES[code] || error?.message || '请求失败';
+  const { code, fields, message, requestId, httpStatus, nested } = normalizeApiError(error);
 
   // 保留 Axios response，兼容尚未迁移的页面；业务代码可以逐步改用这些稳定字段。
   // 后端新协议中的 error 是对象，旧页面则把它当作字符串读取，因此只在客户端错误对象
@@ -48,8 +33,8 @@ function normalizeError(error) {
   error.name = 'AppError';
   error.appErrorCode = code;
   error.fields = fields && typeof fields === 'object' ? fields : {};
-  error.requestId = nested?.request_id || response?.headers?.['x-request-id'] || null;
-  error.httpStatus = status || null;
+  error.requestId = requestId;
+  error.httpStatus = httpStatus;
   error.message = message;
   return error;
 }
@@ -101,12 +86,11 @@ service.interceptors.response.use(
         }
         
         // 调用刷新令牌API
-        const response = await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'}/token/refresh/`,
-          { refresh: refreshToken }
-        );
+        const response = await service.post('/token/refresh/', {
+          refresh: refreshToken
+        });
         
-        const { access } = response.data;
+        const { access } = response;
         
         // 更新访问令牌
         setToken(access);
