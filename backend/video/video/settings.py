@@ -298,14 +298,15 @@ CELERY_WORKER_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s] %(messa
 CELERY_WORKER_TASK_LOG_FORMAT = '[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s'
 
 # Django Cache 配置
+# redis-py 5.x 的 Connection 只接受小写 socket_connect_timeout / socket_timeout
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': REDIS_CACHE_URL,
         'KEY_PREFIX': 'video_web',
         'OPTIONS': {
-            'SOCKET_CONNECT_TIMEOUT': _env_int('REDIS_SOCKET_CONNECT_TIMEOUT', 5),
-            'SOCKET_TIMEOUT': _env_int('REDIS_SOCKET_TIMEOUT', 5),
+            'socket_connect_timeout': _env_int('REDIS_SOCKET_CONNECT_TIMEOUT', 5),
+            'socket_timeout': _env_int('REDIS_SOCKET_TIMEOUT', 5),
         },
         'TIMEOUT': 3600,  # 默认缓存超时时间（秒）
     }
