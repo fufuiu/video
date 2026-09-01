@@ -247,6 +247,7 @@ class VideoViewSet(viewsets.ModelViewSet):
                 video.id,
                 request=request,
                 target_video_id=video.id,
+                dedupe_key=f"video:{video.id}:process",
             )
             logger.info(f"手动触发视频 {video.id} 的转码任务")
             return Response({
@@ -662,6 +663,7 @@ class VideoViewSet(viewsets.ModelViewSet):
                 video.id,
                 request=request,
                 target_video_id=video.id,
+                dedupe_key=f"video:{video.id}:process",
             )
             return Response(
                 {
@@ -825,6 +827,7 @@ class VideoViewSet(viewsets.ModelViewSet):
                 video.id,
                 request=request,
                 target_video_id=video.id,
+                dedupe_key=f"video:{video.id}:process",
             )
             return Response({
                 'message': '视频处理已启动',
@@ -846,6 +849,7 @@ class VideoViewSet(viewsets.ModelViewSet):
             video.id,
             request=request,
             target_video_id=video.id,
+            dedupe_key=f"video:{video.id}:process",
         )
         
         return Response({
@@ -1130,6 +1134,7 @@ class VideoViewSet(viewsets.ModelViewSet):
                 request=request,
                 target_video_id=video.id,
                 language=language,
+                dedupe_key=f"video:{video.id}:subtitle-generate:{language}",
             )
             return Response({
                 "detail": "字幕生成任务已提交",

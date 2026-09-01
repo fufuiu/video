@@ -480,6 +480,7 @@ class ModerationViewSet(viewsets.ViewSet):
                 fps,
                 request=request,
                 target_video_id=video_id,
+                dedupe_key=f"video:{video_id}:moderation:{threshold_level}:{threshold}:{fps}",
             )
             
             return Response({
@@ -684,6 +685,7 @@ class SubtitleViewSet(viewsets.ViewSet):
                 video.id,
                 request=request,
                 target_video_id=video.id,
+                dedupe_key=f"video:{video.id}:subtitle-detect",
             )
             
             logger.info(f"字幕检测任务已提交，task_id: {async_result.id}")
@@ -926,6 +928,7 @@ class SubtitleViewSet(viewsets.ViewSet):
                 request=request,
                 target_video_id=video.id,
                 language=language,
+                dedupe_key=f"video:{video.id}:subtitle-generate:{language}",
             )
             
             return Response({

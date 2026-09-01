@@ -533,6 +533,7 @@ def batch_moderate_videos(video_ids, threshold_level='medium', threshold=0.6, fp
                 threshold,
                 fps,
                 target_video_id=video_id,
+                dedupe_key=f"video:{video_id}:moderation:{threshold_level}:{threshold}:{fps}",
             )
             results.append({'video_id': video_id, 'task_id': result.id, 'status': 'submitted'})
         except Exception as e:

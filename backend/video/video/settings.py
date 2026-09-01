@@ -286,6 +286,36 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True  # 消除 Celery 6.0 警告
 CELERY_TASK_TRACK_STARTED = True
 
+# Long-running tasks must not remain invisible forever. Late acknowledgements
+# allow a worker crash to return the message to the broker; the hard limit is a
+# final safety net after the soft limit has had a chance to clean up.
+CELERY_TASK_ANNOTATIONS = {
+    'videos.tasks.process_video': {
+        'soft_time_limit': _env_int('VIDEO_PROCESS_SOFT_TIME_LIMIT', 7200),
+        'time_limit': _env_int('VIDEO_PROCESS_TIME_LIMIT', 7500),
+        'acks_late': True,
+        'reject_on_worker_lost': True,
+    },
+    'ai_service.tasks.generate_video_subtitles': {
+        'soft_time_limit': _env_int('VIDEO_SUBTITLE_SOFT_TIME_LIMIT', 1800),
+        'time_limit': _env_int('VIDEO_SUBTITLE_TIME_LIMIT', 2100),
+        'acks_late': True,
+        'reject_on_worker_lost': True,
+    },
+    'ai_service.tasks.detect_video_subtitle': {
+        'soft_time_limit': _env_int('VIDEO_SUBTITLE_DETECT_SOFT_TIME_LIMIT', 1800),
+        'time_limit': _env_int('VIDEO_SUBTITLE_DETECT_TIME_LIMIT', 2100),
+        'acks_late': True,
+        'reject_on_worker_lost': True,
+    },
+    'ai_service.tasks.moderate_video_task': {
+        'soft_time_limit': _env_int('VIDEO_MODERATION_SOFT_TIME_LIMIT', 3600),
+        'time_limit': _env_int('VIDEO_MODERATION_TIME_LIMIT', 3900),
+        'acks_late': True,
+        'reject_on_worker_lost': True,
+    },
+}
+
 # 任务结果过期时间（秒）
 CELERY_RESULT_EXPIRES = 3600 
 

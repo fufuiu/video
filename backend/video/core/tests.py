@@ -175,6 +175,61 @@ class HealthEndpointTests(SimpleTestCase):
             'video_id': '42',
         })
 
+    @patch('core.task_lifecycle.cache')
+    def test_task_dispatch_deduplicates_before_publishing(self, mock_cache):
+        task = MagicMock()
+        mock_cache.get.return_value = 'task-existing'
+
+        result = enqueue_task(task, 42, dedupe_key='video:42:process')
+
+        self.assertEqual(result.id, 'task-existing')
+        task.apply_async.assert_not_called()
+        mock_cache.add.assert_not_called()
+
+    @patch('core.task_lifecycle.cache')
+    def test_first_deduplicated_dispatch_reserves_context_and_task_id(self, mock_cache):
+        task = MagicMock()
+        task.apply_async.return_value.id = 'task-new'
+        mock_cache.get.return_value = None
+        mock_cache.add.return_value = True
+
+        result = enqueue_task(task, 42, target_video_id=42, dedupe_key='video:42:process')
+
+        self.assertEqual(result.id, 'task-new')
+        task.apply_async.assert_called_once()
+        call = task.apply_async.call_args
+        self.assertTrue(call.kwargs['task_id'])
+        self.assertEqual(call.kwargs['headers']['video_id'], '42')
+        self.assertEqual(call.kwargs['headers']['dedupe_key'], 'video:42:process')
+        mock_cache.add.assert_called_once_with(
+            'celery_task_dedupe:video:42:process',
+            call.kwargs['task_id'],
+            7200,
+        )
+
+    @patch('core.task_lifecycle.cache')
+    def test_task_dispatch_reserves_dedupe_key_and_releases_on_publish_failure(self, mock_cache):
+        task = MagicMock()
+        task.apply_async.side_effect = RuntimeError('broker unavailable')
+        mock_cache.get.return_value = None
+        mock_cache.add.return_value = True
+
+        with self.assertRaises(RuntimeError):
+            enqueue_task(task, 42, dedupe_key='video:42:process')
+
+        mock_cache.add.assert_called_once()
+        mock_cache.delete.assert_called_once_with('celery_task_dedupe:video:42:process')
+
+    def test_long_running_task_policies_are_explicit(self):
+        from django.conf import settings
+
+        policy = settings.CELERY_TASK_ANNOTATIONS['videos.tasks.process_video']
+
+        self.assertEqual(policy['soft_time_limit'], 7200)
+        self.assertEqual(policy['time_limit'], 7500)
+        self.assertTrue(policy['acks_late'])
+        self.assertTrue(policy['reject_on_worker_lost'])
+
     def test_task_status_serializer_hides_failure_details(self):
         result = MagicMock(
             id='task-failed',

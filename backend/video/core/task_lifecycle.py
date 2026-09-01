@@ -5,13 +5,18 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from uuid import uuid4
 
 from celery import current_task
 from celery.result import AsyncResult
 from celery.signals import task_failure, task_postrun, task_prerun, task_retry
+from django.core.cache import cache
 
 
 logger = logging.getLogger("core.task_lifecycle")
+
+TASK_DEDUPE_PREFIX = "celery_task_dedupe:"
+TASK_DEDUPE_TTL = 2 * 60 * 60
 
 CELERY_TO_API_STATUS = {
     "PENDING": "pending",
@@ -39,7 +44,24 @@ def _active_task_headers() -> dict[str, Any]:
     return dict(headers or {})
 
 
-def enqueue_task(task, *args, request=None, target_video_id=None, **kwargs):
+def _dedupe_cache_key(dedupe_key: str) -> str:
+    return f"{TASK_DEDUPE_PREFIX}{dedupe_key}"
+
+
+def _existing_deduplicated_task(task, task_id):
+    """Build an AsyncResult for a task reserved by an earlier submission."""
+    return AsyncResult(str(task_id), app=getattr(task, "app", None))
+
+
+def enqueue_task(
+    task,
+    *args,
+    request=None,
+    target_video_id=None,
+    dedupe_key=None,
+    dedupe_ttl=TASK_DEDUPE_TTL,
+    **kwargs,
+):
     """Dispatch a task with request/video context in Celery headers.
 
     Headers are metadata only; they are not added to the task's function
@@ -51,6 +73,42 @@ def enqueue_task(task, *args, request=None, target_video_id=None, **kwargs):
         headers["request_id"] = request_id
     if target_video_id is not None:
         headers["video_id"] = str(target_video_id)
+    if dedupe_key:
+        headers["dedupe_key"] = str(dedupe_key)
+        cache_key = _dedupe_cache_key(str(dedupe_key))
+        task_id = str(uuid4())
+        try:
+            existing_id = cache.get(cache_key)
+            if existing_id:
+                return _existing_deduplicated_task(task, existing_id)
+
+            # SETNX reserves the key before publishing, closing the race where
+            # two HTTP requests enqueue the same video at the same time.
+            reserved = cache.add(cache_key, task_id, dedupe_ttl)
+        except Exception:
+            logger.warning(
+                "task dedupe unavailable; dispatching normally task=%s dedupe_key=%s",
+                getattr(task, "name", None),
+                dedupe_key,
+                exc_info=True,
+            )
+        else:
+            if reserved:
+                try:
+                    return task.apply_async(
+                        args=args,
+                        kwargs=kwargs,
+                        headers=headers,
+                        task_id=task_id,
+                    )
+                except Exception:
+                    cache.delete(cache_key)
+                    raise
+
+            existing_id = cache.get(cache_key)
+            if existing_id:
+                return _existing_deduplicated_task(task, existing_id)
+
     return task.apply_async(args=args, kwargs=kwargs, headers=headers)
 
 
@@ -94,6 +152,16 @@ def _log_lifecycle(event: str, state: str, task_name, task_id, args=None, reques
     logger.info("task_lifecycle %s", json.dumps(payload, ensure_ascii=False, default=str))
 
 
+def _release_task_dedupe(request):
+    headers = dict(getattr(request, "headers", None) or {})
+    dedupe_key = headers.get("dedupe_key")
+    if dedupe_key:
+        try:
+            cache.delete(_dedupe_cache_key(str(dedupe_key)))
+        except Exception:
+            logger.warning("task dedupe cleanup failed dedupe_key=%s", dedupe_key, exc_info=True)
+
+
 @task_prerun.connect
 def log_task_started(sender=None, task_id=None, task=None, args=None, kwargs=None, **_extra):
     _log_lifecycle(
@@ -109,14 +177,17 @@ def log_task_started(sender=None, task_id=None, task=None, args=None, kwargs=Non
 
 @task_postrun.connect
 def log_task_finished(sender=None, task_id=None, task=None, state=None, args=None, **_extra):
+    task_state = canonical_task_status(state)
     _log_lifecycle(
         "finished",
-        canonical_task_status(state),
+        task_state,
         getattr(sender, "name", None),
         task_id,
         args=args,
         request=getattr(task, "request", None),
     )
+    if task_state in {"succeeded", "failed", "cancelled"}:
+        _release_task_dedupe(getattr(task, "request", None))
 
 
 @task_failure.connect
