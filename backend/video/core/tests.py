@@ -5,6 +5,12 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory
 
 from core.errors import APIErrorResponseMiddleware, api_exception_handler
+from core.task_lifecycle import (
+    canonical_task_status,
+    enqueue_task,
+    report_task_progress,
+    serialize_task_result,
+)
 
 
 class HealthEndpointTests(SimpleTestCase):
@@ -127,3 +133,62 @@ class HealthEndpointTests(SimpleTestCase):
         self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
         self.assertEqual(response.data['error']['fields']['title'], ['标题不能为空'])
         self.assertEqual(response['X-Request-ID'], 'req-legacy-fields')
+
+    def test_task_states_are_mapped_to_stable_product_states(self):
+        self.assertEqual(canonical_task_status('PENDING'), 'pending')
+        self.assertEqual(canonical_task_status('STARTED'), 'processing')
+        self.assertEqual(canonical_task_status('RETRY'), 'retrying')
+        self.assertEqual(canonical_task_status('SUCCESS'), 'succeeded')
+        self.assertEqual(canonical_task_status('FAILURE'), 'failed')
+        self.assertEqual(canonical_task_status('REVOKED'), 'cancelled')
+
+    def test_task_dispatch_carries_request_and_video_context_in_headers(self):
+        task = MagicMock()
+        request = MagicMock(request_id='req-task-dispatch')
+
+        enqueue_task(task, 42, request=request, target_video_id=42, language='zh')
+
+        task.apply_async.assert_called_once()
+        call = task.apply_async.call_args
+        self.assertEqual(call.kwargs['args'], (42,))
+        self.assertEqual(call.kwargs['kwargs'], {'language': 'zh'})
+        self.assertEqual(call.kwargs['headers'], {
+            'request_id': 'req-task-dispatch',
+            'video_id': '42',
+        })
+
+    def test_task_status_serializer_hides_failure_details(self):
+        result = MagicMock(
+            id='task-failed',
+            name='videos.tasks.process_video',
+            state='FAILURE',
+            info=RuntimeError('secret path'),
+            result=RuntimeError('secret path'),
+        )
+        result.ready.return_value = True
+
+        payload = serialize_task_result(result, target_video_id=42)
+
+        self.assertEqual(payload['status'], 'failed')
+        self.assertEqual(payload['video_id'], 42)
+        self.assertEqual(payload['error']['code'], 'TASK_FAILED')
+        self.assertNotIn('secret', payload['error']['message'])
+
+    def test_task_progress_is_published_as_safe_metadata(self):
+        task = MagicMock()
+        task.request.headers = {'request_id': 'req-progress'}
+        task.request.id = 'task-progress'
+
+        report_task_progress(task, current=25, total=100, message='正在处理', target_video_id=42)
+
+        task.update_state.assert_called_once_with(
+            state='PROGRESS',
+            meta={
+                'current': 25,
+                'total': 100,
+                'percent': 25.0,
+                'message': '正在处理',
+                'video_id': 42,
+                'request_id': 'req-progress',
+            },
+        )

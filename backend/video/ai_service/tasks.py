@@ -9,6 +9,7 @@ from django.conf import settings
 from django.utils import timezone
 from .models import ModerationResult, VideoSummary
 from .services import WhisperService, OCRService
+from core.task_lifecycle import enqueue_task, report_task_progress
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ def generate_video_subtitles(self, video_id, language='auto'):
     from videos.models import Video
     
     task_id = self.request.id or 'unknown'
+    report_task_progress(self, current=0, message='开始生成字幕', target_video_id=video_id)
     logger.info(f"[Task {task_id}] 开始生成字幕: video_id={video_id}")
     
     tmp_wav_path = None
@@ -82,6 +84,7 @@ def generate_video_subtitles(self, video_id, language='auto'):
         
         logger.info(f"[Task {task_id}] 字幕生成完成: count={result['count']}, language={result['language']}")
         
+        report_task_progress(self, current=100, message='字幕生成完成', target_video_id=video_id)
         return {
             "status": "success",
             "video_id": video_id,
@@ -127,6 +130,7 @@ def detect_video_subtitle(self, video_id):
     from videos.models import Video
     
     task_id = self.request.id or 'unknown'
+    report_task_progress(self, current=0, message='开始检测字幕', target_video_id=video_id)
     logger.info(f"[Task {task_id}] 开始字幕检测: video_id={video_id}")
     
     try:
@@ -217,7 +221,7 @@ def detect_video_subtitle(self, video_id):
             # 触发转码任务
             from videos.tasks import process_video
             try:
-                process_video.delay(video_id)
+                enqueue_task(process_video, video_id, target_video_id=video_id)
                 logger.info(f"[Task {task_id}] 已触发转码任务")
             except Exception as e:
                 logger.error(f"[Task {task_id}] 触发转码任务失败: {e}")
@@ -234,6 +238,7 @@ def detect_video_subtitle(self, video_id):
         
         logger.info(f"[Task {task_id}] 字幕检测完成: has_subtitle={result['has_subtitle']}, type={result['subtitle_type']}")
         
+        report_task_progress(self, current=100, message='字幕检测完成', target_video_id=video_id)
         return {
             "status": "success",
             "video_id": video_id,
@@ -307,6 +312,7 @@ def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6,
     from django.conf import settings
     
     task_id = self.request.id or 'unknown'
+    report_task_progress(self, current=0, message='开始内容审核', target_video_id=video_id)
     logger.info(f"[Task {task_id}] 开始 NSFW 审核: video_id={video_id}")
     
     moderation = None
@@ -445,6 +451,7 @@ def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6,
         moderation.save()
         
         logger.info(f"[Task {task_id}] 审核完成: result={moderation_result}, confidence={confidence:.2f}")
+        report_task_progress(self, current=100, message='内容审核完成', target_video_id=video_id)
         
         return {
             'video_id': video_id,
@@ -519,7 +526,14 @@ def batch_moderate_videos(video_ids, threshold_level='medium', threshold=0.6, fp
     results = []
     for video_id in video_ids:
         try:
-            result = moderate_video_task.delay(video_id, threshold_level, threshold, fps)
+            result = enqueue_task(
+                moderate_video_task,
+                video_id,
+                threshold_level,
+                threshold,
+                fps,
+                target_video_id=video_id,
+            )
             results.append({'video_id': video_id, 'task_id': result.id, 'status': 'submitted'})
         except Exception as e:
             logger.error(f"提交视频 {video_id} 审核任务失败: {str(e)}")

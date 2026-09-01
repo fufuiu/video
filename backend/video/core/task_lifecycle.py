@@ -1,0 +1,185 @@
+"""Shared Celery task dispatch, lifecycle logging, and status serialization."""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any
+
+from celery import current_task
+from celery.result import AsyncResult
+from celery.signals import task_failure, task_postrun, task_prerun, task_retry
+
+
+logger = logging.getLogger("core.task_lifecycle")
+
+CELERY_TO_API_STATUS = {
+    "PENDING": "pending",
+    "RECEIVED": "pending",
+    "STARTED": "processing",
+    "PROGRESS": "processing",
+    "RETRY": "retrying",
+    "SUCCESS": "succeeded",
+    "FAILURE": "failed",
+    "REVOKED": "cancelled",
+}
+
+
+def canonical_task_status(state: str | None) -> str:
+    """Map Celery's state names to the product's stable task states."""
+    return CELERY_TO_API_STATUS.get(str(state or "PENDING").upper(), "pending")
+
+
+def _active_task_headers() -> dict[str, Any]:
+    """Read context from a parent Celery task when dispatching a child task."""
+    try:
+        headers = getattr(getattr(current_task, "request", None), "headers", None)
+    except Exception:
+        headers = None
+    return dict(headers or {})
+
+
+def enqueue_task(task, *args, request=None, target_video_id=None, **kwargs):
+    """Dispatch a task with request/video context in Celery headers.
+
+    Headers are metadata only; they are not added to the task's function
+    arguments, so existing task signatures remain compatible.
+    """
+    headers = _active_task_headers()
+    request_id = getattr(request, "request_id", None) if request is not None else None
+    if request_id:
+        headers["request_id"] = request_id
+    if target_video_id is not None:
+        headers["video_id"] = str(target_video_id)
+    return task.apply_async(args=args, kwargs=kwargs, headers=headers)
+
+
+def report_task_progress(task, *, current: int, total: int = 100, message: str = "", target_video_id=None):
+    """Publish best-effort progress metadata without breaking the task itself."""
+    try:
+        request = getattr(task, "request", None)
+        headers = dict(getattr(request, "headers", None) or {})
+        task.update_state(
+            state="PROGRESS",
+            meta={
+                "current": current,
+                "total": total,
+                "percent": round((current / total) * 100, 1) if total else 0,
+                "message": message,
+                "video_id": target_video_id or headers.get("video_id"),
+                "request_id": headers.get("request_id"),
+            },
+        )
+    except Exception:
+        logger.warning("task progress update failed task_id=%s", getattr(task, "request", None) and task.request.id)
+
+
+def _context(task_name, task_id, args=None, request=None) -> dict[str, Any]:
+    headers = dict(getattr(request, "headers", None) or {})
+    video_id = headers.get("video_id")
+    if video_id is None and args:
+        # Existing video/AI tasks conventionally use video_id as their first arg.
+        video_id = args[0] if isinstance(args[0], (int, str)) else None
+    return {
+        "task_name": task_name,
+        "task_id": task_id,
+        "request_id": headers.get("request_id"),
+        "video_id": video_id,
+    }
+
+
+def _log_lifecycle(event: str, state: str, task_name, task_id, args=None, request=None, **extra):
+    payload = _context(task_name, task_id, args=args, request=request)
+    payload.update({"event": event, "state": state, **extra})
+    logger.info("task_lifecycle %s", json.dumps(payload, ensure_ascii=False, default=str))
+
+
+@task_prerun.connect
+def log_task_started(sender=None, task_id=None, task=None, args=None, kwargs=None, **_extra):
+    _log_lifecycle(
+        "started",
+        "processing",
+        getattr(sender, "name", None),
+        task_id,
+        args=args,
+        request=getattr(task, "request", None),
+        retry_count=getattr(getattr(task, "request", None), "retries", 0),
+    )
+
+
+@task_postrun.connect
+def log_task_finished(sender=None, task_id=None, task=None, state=None, args=None, **_extra):
+    _log_lifecycle(
+        "finished",
+        canonical_task_status(state),
+        getattr(sender, "name", None),
+        task_id,
+        args=args,
+        request=getattr(task, "request", None),
+    )
+
+
+@task_failure.connect
+def log_task_failed(sender=None, task_id=None, args=None, exception=None, einfo=None, **_extra):
+    request = getattr(sender, "request", None)
+    _log_lifecycle(
+        "failed",
+        "failed",
+        getattr(sender, "name", None),
+        task_id,
+        args=args,
+        request=request,
+        exception_type=type(exception).__name__ if exception else "Exception",
+    )
+    logger.error(
+        "celery task failed task_id=%s exception_type=%s",
+        task_id,
+        type(exception).__name__ if exception else "Exception",
+    )
+
+
+@task_retry.connect
+def log_task_retry(sender=None, request=None, reason=None, einfo=None, **_extra):
+    _log_lifecycle(
+        "retrying",
+        "retrying",
+        getattr(sender, "name", None),
+        getattr(request, "id", None),
+        args=getattr(request, "args", None),
+        request=request,
+        reason_type=type(reason).__name__ if reason else "Retry",
+    )
+
+
+def serialize_task_result(result: AsyncResult, *, target_video_id=None) -> dict[str, Any]:
+    """Return one safe, backwards-aware payload for task status endpoints."""
+    celery_state = str(result.state or "PENDING").upper()
+    payload: dict[str, Any] = {
+        "task_id": result.id,
+        "task_name": getattr(result, "name", None),
+        "state": celery_state,
+        "status": canonical_task_status(celery_state),
+        "ready": result.ready(),
+    }
+
+    meta = result.info if isinstance(result.info, dict) else {}
+    if target_video_id is not None:
+        payload["video_id"] = target_video_id
+    elif meta.get("video_id") is not None:
+        payload["video_id"] = meta["video_id"]
+    if meta.get("request_id"):
+        payload["request_id"] = meta["request_id"]
+
+    if celery_state in {"STARTED", "PROGRESS"} and meta:
+        payload["progress"] = meta
+    elif celery_state == "SUCCESS":
+        payload["result"] = result.result or {}
+    elif celery_state == "FAILURE":
+        payload["error"] = {
+            "code": "TASK_FAILED",
+            "message": "任务执行失败，请查看日志或稍后重试",
+        }
+    elif celery_state == "RETRY":
+        payload["retry_count"] = meta.get("retry_count", 0)
+
+    return payload

@@ -6,6 +6,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
+from core.task_lifecycle import enqueue_task, serialize_task_result
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.utils import timezone
@@ -380,13 +381,22 @@ class ModerationViewSet(viewsets.ViewSet):
             moderation.save()
             
             # 提交新的审核任务
-            async_result = moderate_video_task.delay(video.id, threshold_level, threshold, fps)
+            async_result = enqueue_task(
+                moderate_video_task,
+                video.id,
+                threshold_level,
+                threshold,
+                fps,
+                request=request,
+                target_video_id=video.id,
+            )
             
             return Response({
                 'detail': '重新审核任务已提交',
                 'video_id': video.id,
                 'moderation_id': moderation.id,
                 'task_id': async_result.id,
+                'status': 'submitted',
                 'params': {
                     'threshold_level': threshold_level,
                     'threshold': threshold,
@@ -462,12 +472,21 @@ class ModerationViewSet(viewsets.ViewSet):
         
         try:
             # 提交异步任务
-            async_result = moderate_video_task.delay(video_id, threshold_level, threshold, fps)
+            async_result = enqueue_task(
+                moderate_video_task,
+                video_id,
+                threshold_level,
+                threshold,
+                fps,
+                request=request,
+                target_video_id=video_id,
+            )
             
             return Response({
                 'detail': '审核任务已提交',
                 'video_id': video_id,
                 'task_id': async_result.id,
+                'status': 'submitted',
                 'params': {
                     'threshold_level': threshold_level,
                     'threshold': threshold,
@@ -506,11 +525,19 @@ class ModerationViewSet(viewsets.ViewSet):
         fps = int(request.data.get('fps', 1))
         
         try:
-            result = batch_moderate_videos.delay(video_ids, threshold_level, threshold, fps)
+            result = enqueue_task(
+                batch_moderate_videos,
+                video_ids,
+                threshold_level,
+                threshold,
+                fps,
+                request=request,
+            )
             
             return Response({
                 'detail': f'已提交 {len(video_ids)} 个审核任务',
                 'task_id': result.id,
+                'status': 'submitted',
                 'video_count': len(video_ids)
             })
         except Exception as e:
@@ -539,16 +566,10 @@ class ModerationViewSet(viewsets.ViewSet):
             from celery.result import AsyncResult
             result = AsyncResult(task_id)
             
-            data = {
-                'task_id': task_id,
-                'state': result.state,
-            }
+            data = serialize_task_result(result)
             
             if result.state == 'SUCCESS':
                 data['result'] = result.result or {}
-            elif result.state == 'FAILURE':
-                data['error'] = str(result.result)
-            
             return Response(data)
         except Exception as e:
             logger.error(f"查询任务状态失败: {str(e)}", exc_info=True)
@@ -658,7 +679,12 @@ class SubtitleViewSet(viewsets.ViewSet):
             
             # 提交异步任务
             from .tasks import detect_video_subtitle
-            async_result = detect_video_subtitle.delay(video.id)
+            async_result = enqueue_task(
+                detect_video_subtitle,
+                video.id,
+                request=request,
+                target_video_id=video.id,
+            )
             
             logger.info(f"字幕检测任务已提交，task_id: {async_result.id}")
             
@@ -666,6 +692,7 @@ class SubtitleViewSet(viewsets.ViewSet):
                 "detail": "字幕检测任务已提交",
                 "video_id": video.id,
                 "task_id": async_result.id,
+                "status": "submitted",
                 "tip": "使用 detection-status 接口查询检测进度"
             })
             
@@ -710,24 +737,14 @@ class SubtitleViewSet(viewsets.ViewSet):
             from celery.result import AsyncResult
             result = AsyncResult(task_id)
             
-            data = {
-                "video_id": video.id,
-                "task_id": task_id,
-                "state": result.state,
-            }
+            data = serialize_task_result(result, target_video_id=video.id)
             
             if result.state == 'SUCCESS':
                 payload = result.result or {}
                 data["result"] = payload
                 data["allow_continue"] = payload.get('allow_continue', True)
             elif result.state == 'FAILURE':
-                error_info = result.result or {}
-                if isinstance(error_info, dict):
-                    data["error"] = error_info.get('reason', str(error_info))
-                    data["allow_continue"] = error_info.get('allow_continue', True)
-                else:
-                    data["error"] = str(error_info)
-                    data["allow_continue"] = True
+                data["allow_continue"] = True
             
             return Response(data)
         except Exception as e:
@@ -903,12 +920,19 @@ class SubtitleViewSet(viewsets.ViewSet):
         
         try:
             from .tasks import generate_video_subtitles
-            async_result = generate_video_subtitles.delay(video.id, language=language)
+            async_result = enqueue_task(
+                generate_video_subtitles,
+                video.id,
+                request=request,
+                target_video_id=video.id,
+                language=language,
+            )
             
             return Response({
                 "detail": "字幕生成任务已提交",
                 "video_id": video.id,
                 "task_id": async_result.id,
+                "status": "submitted",
                 "language": language,
                 "tip": "使用 task-status 接口查询生成进度"
             })
@@ -943,19 +967,12 @@ class SubtitleViewSet(viewsets.ViewSet):
         try:
             result = AsyncResult(task_id)
             
-            data = {
-                "video_id": video.id,
-                "task_id": task_id,
-                "state": result.state,
-            }
+            data = serialize_task_result(result, target_video_id=video.id)
             
             if result.state == 'SUCCESS':
                 payload = result.result or {}
                 data["result"] = payload
                 data["subtitle_count"] = len(video.subtitles_draft or [])
-            elif result.state in ('FAILURE',):
-                data["error"] = str(result.result)
-            
             return Response(data)
         except Exception as e:
             logger.error(f"查询任务状态失败: {str(e)}", exc_info=True)

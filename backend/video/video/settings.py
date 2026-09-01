@@ -284,6 +284,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True  # 消除 Celery 6.0 警告
+CELERY_TASK_TRACK_STARTED = True
 
 # 任务结果过期时间（秒）
 CELERY_RESULT_EXPIRES = 3600 
@@ -428,6 +429,11 @@ LOGGING = {
             'propagate': False,
         },
         'celery.beat': {
+            'handlers': ['console', 'celery_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'core.task_lifecycle': {
             'handlers': ['console', 'celery_file'],
             'level': 'INFO',
             'propagate': False,
