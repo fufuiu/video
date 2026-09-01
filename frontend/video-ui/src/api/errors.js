@@ -39,6 +39,7 @@ export function normalizeApiError(error) {
     || (error?.code === 'ECONNABORTED' ? 'TIMEOUT' : null)
     || (!response ? 'NETWORK_ERROR' : 'REQUEST_FAILED');
   const fields = nested?.fields || data?.fields || (data && typeof data === 'object' ? data : {});
+  const meta = nested?.meta || data?.meta || {};
   const message = status >= 500
     ? DEFAULT_ERROR_MESSAGES.INTERNAL_SERVER_ERROR
     : nested?.message || data?.message || data?.detail || data?.error
@@ -47,6 +48,7 @@ export function normalizeApiError(error) {
   return {
     code,
     fields: fields && typeof fields === 'object' ? fields : {},
+    meta: meta && typeof meta === 'object' ? meta : {},
     message,
     requestId: nested?.request_id || response?.headers?.['x-request-id'] || null,
     httpStatus: status || null,

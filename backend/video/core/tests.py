@@ -134,6 +134,24 @@ class HealthEndpointTests(SimpleTestCase):
         self.assertEqual(response.data['error']['fields']['title'], ['标题不能为空'])
         self.assertEqual(response['X-Request-ID'], 'req-legacy-fields')
 
+    def test_legacy_control_metadata_is_preserved_without_polluting_fields(self):
+        request = APIRequestFactory().post('/api/auth/login/', {})
+        request.request_id = 'req-captcha'
+
+        def get_response(_request):
+            from rest_framework.response import Response
+
+            return Response(
+                {'detail': '请输入验证码', 'show_captcha': True},
+                status=400,
+            )
+
+        response = APIErrorResponseMiddleware(get_response)(request)
+
+        self.assertEqual(response.data['error']['message'], '请输入验证码')
+        self.assertEqual(response.data['error']['fields'], {})
+        self.assertEqual(response.data['error']['meta'], {'show_captcha': True})
+
     def test_task_states_are_mapped_to_stable_product_states(self):
         self.assertEqual(canonical_task_status('PENDING'), 'pending')
         self.assertEqual(canonical_task_status('STARTED'), 'processing')

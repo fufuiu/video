@@ -14,19 +14,20 @@ const service = axios.create({
 function normalizeError(error) {
   const response = error?.response;
   const data = response?.data;
-  const { code, fields, message, requestId, httpStatus, nested } = normalizeApiError(error);
+  const { code, fields, message, requestId, httpStatus, nested, meta } = normalizeApiError(error);
 
   // 保留 Axios response，兼容尚未迁移的页面；业务代码可以逐步改用这些稳定字段。
   // 后端新协议中的 error 是对象，旧页面则把它当作字符串读取，因此只在客户端错误对象
   // 上提供过渡字段，服务端正式响应仍保持统一信封。
   if (nested && typeof nested === 'object' && response) {
-    error.apiError = { ...nested };
+    error.apiError = { ...nested, meta };
     response.data = {
       ...data,
       detail: message,
       error: message,
       message,
-      ...(fields || {})
+      ...(fields || {}),
+      ...(meta || {})
     };
   }
 
@@ -35,6 +36,7 @@ function normalizeError(error) {
   error.fields = fields && typeof fields === 'object' ? fields : {};
   error.requestId = requestId;
   error.httpStatus = httpStatus;
+  error.meta = meta && typeof meta === 'object' ? meta : {};
   error.message = message;
   return error;
 }

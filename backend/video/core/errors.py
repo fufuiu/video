@@ -35,6 +35,8 @@ DEFAULT_MESSAGES = {
     429: "请求过于频繁，请稍后重试",
 }
 
+ERROR_METADATA_KEYS = ("show_captcha", "require_captcha")
+
 
 def error_code_for_status(status_code: int) -> str:
     if status_code in ERROR_CODES:
@@ -52,11 +54,12 @@ def default_message_for_status(status_code: int) -> str:
     return "请求失败"
 
 
-def _extract_error(data: Any, status_code: int) -> tuple[str, dict[str, Any], str]:
-    """从 DRF 或历史接口响应中提取 message、fields 和 code。"""
+def _extract_error(data: Any, status_code: int) -> tuple[str, dict[str, Any], str, dict[str, Any]]:
+    """从 DRF 或历史接口响应中提取 message、fields、code 和控制元数据。"""
     code = error_code_for_status(status_code)
     message = default_message_for_status(status_code)
     fields: dict[str, Any] = {}
+    metadata: dict[str, Any] = {}
 
     if isinstance(data, dict):
         nested = data.get("error")
@@ -66,7 +69,20 @@ def _extract_error(data: Any, status_code: int) -> tuple[str, dict[str, Any], st
             nested_fields = nested.get("fields")
             if isinstance(nested_fields, dict):
                 fields = nested_fields
-            return message, fields, code
+            nested_metadata = nested.get("meta")
+            if isinstance(nested_metadata, dict):
+                metadata = {
+                    key: nested_metadata[key]
+                    for key in ERROR_METADATA_KEYS
+                    if isinstance(nested_metadata.get(key), bool)
+                }
+            return message, fields, code, metadata
+
+        metadata = {
+            key: data[key]
+            for key in ERROR_METADATA_KEYS
+            if isinstance(data.get(key), bool)
+        }
 
         if isinstance(nested, str) and status_code < 500:
             message = nested
@@ -90,19 +106,23 @@ def _extract_error(data: Any, status_code: int) -> tuple[str, dict[str, Any], st
     if status_code >= 500:
         message = default_message_for_status(status_code)
 
-    return message, fields, code
+    return message, fields, code, metadata
 
 
 def build_error_payload(data: Any, status_code: int, request_id: str | None = None) -> dict[str, Any]:
-    message, fields, code = _extract_error(data, status_code)
+    message, fields, code, metadata = _extract_error(data, status_code)
+    error = {
+        "code": code,
+        "message": message,
+        "fields": fields,
+        "request_id": request_id,
+    }
+    if metadata:
+        error["meta"] = metadata
+
     return {
         "success": False,
-        "error": {
-            "code": code,
-            "message": message,
-            "fields": fields,
-            "request_id": request_id,
-        },
+        "error": error,
     }
 
 

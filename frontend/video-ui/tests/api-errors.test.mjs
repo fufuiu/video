@@ -38,6 +38,26 @@ test('keeps legacy field errors available to callers', () => {
   assert.deepEqual(result.fields, { title: ['标题不能为空'] });
 });
 
+test('keeps authentication control metadata available to callers', () => {
+  const result = normalizeApiError({
+    response: {
+      status: 400,
+      data: {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: '请输入验证码',
+          fields: {},
+          meta: { show_captcha: true },
+          request_id: 'req-captcha'
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(result.meta, { show_captcha: true });
+});
+
 test('hides server details and classifies transport failures', () => {
   const serverError = normalizeApiError({
     response: {
