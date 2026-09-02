@@ -35,6 +35,7 @@ class Video(models.Model):
     STATUS_CHOICES = (
         ('uploading', '上传中'),
         ('pending_subtitle_edit', '等待字幕编辑'),  # 新增：字幕编辑引导功能
+        ('transcoding', '转码中'),
         ('processing', '处理中'),
         ('ready', '就绪'),
         ('failed', '失败'),

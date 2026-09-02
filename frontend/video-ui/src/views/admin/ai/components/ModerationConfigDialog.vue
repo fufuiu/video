@@ -7,55 +7,15 @@
     @close="$emit('close')"
     append-to-body
   >
-    <el-form :model="config" label-width="140px">
-      <el-form-item label="检测级别">
-        <el-select v-model="config.threshold_level" style="width: 100%;">
-          <el-option value="low" label="低风险及以上（Low+）">
-            <div class="option-content">
-              <span>低风险及以上（Low+）</span>
-              <el-tag type="info" size="small">宽松</el-tag>
-            </div>
-          </el-option>
-          <el-option value="medium" label="中风险及以上（Medium+）">
-            <div class="option-content">
-              <span>中风险及以上（Medium+）</span>
-              <el-tag type="warning" size="small">推荐</el-tag>
-            </div>
-          </el-option>
-          <el-option value="high" label="高风险（High）">
-            <div class="option-content">
-              <span>高风险（High）</span>
-              <el-tag type="danger" size="small">严格</el-tag>
-            </div>
-          </el-option>
-        </el-select>
-        <div class="form-tip">选择用哪个累积概率来判断是否有问题。推荐使用"中风险及以上"</div>
-      </el-form-item>
-      
-      <el-form-item label="置信度阈值">
-        <el-slider 
-          v-model="config.threshold" 
-          :min="0" 
-          :max="1" 
-          :step="0.05"
-          :format-tooltip="(val) => `${(val * 100).toFixed(0)}%`"
-          show-input
-          :input-size="'small'"
-        />
-        <div class="form-tip">当选定级别的概率超过此阈值时，该帧会被标记为问题帧。值越高越严格</div>
-      </el-form-item>
-      
-      <el-form-item label="抽帧频率">
-        <el-input-number 
-          v-model="config.fps" 
-          :min="1" 
-          :max="10" 
-          :step="1"
-          style="width: 100%;"
-        />
-        <div class="form-tip">每秒抽取多少帧进行检测。值越大检测越精细，但耗时越长</div>
-      </el-form-item>
-    </el-form>
+    <el-alert type="warning" :closable="false" show-icon>
+      <template #title>视频将临时发送到阿里云内容安全服务</template>
+      原视频仍保存在本地；审核时系统会把完整视频临时上传到私有 OSS，生成短期签名地址供阿里云读取，并在任务结束后立即尝试删除。
+    </el-alert>
+    <div class="review-notes">
+      <p>审核策略由阿里云控制台统一管理，页面不再提供不会生效的阈值和抽帧参数。</p>
+      <p>AI 返回的是标签匹配结果；中风险只表示待人工复核，不会自动认定违规。</p>
+      <p>OSS 的生命周期规则会在即时清理失败时自动兜底删除临时对象。</p>
+    </div>
     
     <template #footer>
       <div class="dialog-footer">
@@ -74,7 +34,6 @@ import { Cpu } from '@element-plus/icons-vue';
 defineProps({
   modelValue: Boolean,
   title: String,
-  config: Object,
   loading: Boolean
 });
 
@@ -82,17 +41,8 @@ defineEmits(['update:modelValue', 'close', 'confirm']);
 </script>
 
 <style scoped>
-.option-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.form-tip {
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.4;
-  margin-top: 4px;
-}
+.review-notes { margin-top: 18px; color: #606266; font-size: 14px; line-height: 1.7; }
+.review-notes p { margin: 8px 0; }
 .dialog-footer {
   display: flex;
   justify-content: flex-end;

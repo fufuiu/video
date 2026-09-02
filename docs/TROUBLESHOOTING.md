@@ -101,7 +101,7 @@ Identifier 'response' has already been declared
 
 - ASR 或视频审核启用后，`AI_STORAGE_PROVIDER` 必须设为 `aliyun`，并配置私有 OSS Bucket；
 - OCR/内容安全提示缺 SDK 时，只在真实云端 Worker 安装 `backend/video/requirements-cloud.txt`；
-- OCR 返回 `ocrServiceNotOpen` 说明请求和 AccessKey 已到达阿里云，但账号尚未开通 OCR；
+- OCR 返回 `ocrServiceNotOpen` 说明请求和 AccessKey 已到达阿里云，但当前 AccessKey 所属主账号下的目标 OCR 商品尚未对该接口生效；即使控制台已通知开通，也要继续核对“通用文字识别”类别、主账号归属和状态同步；
 - 内容安全返回 `No permissions` 说明需要开通对应服务或为当前 RAM 身份补充调用权限；
 - 百炼需要 API Key 和工作空间专属 `DASHSCOPE_BASE_URL`，两者缺一不可；
 - 正式环境不要为“消除错误”切到 Mock，Mock 只能用于测试；

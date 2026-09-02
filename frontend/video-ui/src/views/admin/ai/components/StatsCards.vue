@@ -28,19 +28,28 @@
       </div>
     </div>
     <div class="stat-card">
+      <div class="stat-icon review">
+        <el-icon><Warning /></el-icon>
+      </div>
+      <div class="stat-info">
+        <div class="stat-value">{{ stats?.uncertain || 0 }}</div>
+        <div class="stat-label">待人工复核</div>
+      </div>
+    </div>
+    <div class="stat-card">
       <div class="stat-icon unsafe">
         <el-icon><CircleClose /></el-icon>
       </div>
       <div class="stat-info">
-        <div class="stat-value">{{ (stats?.unsafe || 0) + (stats?.uncertain || 0) }}</div>
-        <div class="stat-label">风险内容</div>
+        <div class="stat-value">{{ stats?.unsafe || 0 }}</div>
+        <div class="stat-label">不安全内容</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { Clock, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue';
+import { Clock, Loading, CircleCheck, CircleClose, Warning } from '@element-plus/icons-vue';
 
 defineProps({
   stats: {
@@ -50,6 +59,7 @@ defineProps({
       pending: 0,
       processing: 0,
       safe: 0,
+      uncertain: 0,
       unsafe: 0
     })
   }
@@ -102,6 +112,11 @@ defineProps({
 
 .stat-icon.safe {
   background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: #fff;
+}
+
+.stat-icon.review {
+  background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
   color: #fff;
 }
 

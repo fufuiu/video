@@ -175,6 +175,9 @@ Pop-Location
 # 后端静态检查
 Push-Location backend\video
 ..\venv\Scripts\python.exe manage.py check
+
+# 隔离的自动化测试（SQLite 内存库，不读取或清空 video_dev）
+..\venv\Scripts\python.exe manage.py test --settings=video.test_settings
 Pop-Location
 
 # 前端构建
@@ -185,7 +188,7 @@ Pop-Location
 
 截至 2026-09-01，搜索页重复声明 `response` 的问题已经修复，`npm run build` 已通过，仅保留大 chunk 性能提示。后续如果构建再次失败，应保留并排查当次首个错误，不要继续沿用历史故障结论。
 
-连接验证应分别执行 MySQL `SELECT 1` 和 Redis `PING`，不要用“端口可连接”代替“账号权限正确”。当前业务数据库检查和迁移计划检查已经通过，但全量 Django 测试创建 `test_video_dev` 时仍受 MySQL 1044 权限错误阻塞；测试通过前需要为测试库提供独立权限或独立测试数据库方案。
+连接验证应分别执行 MySQL `SELECT 1` 和 Redis `PING`，不要用“端口可连接”代替“账号权限正确”。真实迁移继续使用 MySQL `video_dev`；自动化测试统一使用 `video.test_settings` 中的 SQLite 内存库，避免 MySQL 账号无法创建 `test_video_dev`，也避免测试清空开发样本数据。需要验证 MySQL 特有行为时，再使用具备独立权限的 MySQL 测试库执行专项集成测试。
 
 需要启用 DeepSeek、阿里云 AI 或 OSS 时，不要把云 SDK 混入所有开发机；按[云端 AI 配置手册](AI_CLOUD_CONFIGURATION.md)只在云端 Worker 安装 `requirements-cloud.txt`，配置后先运行 `manage.py check_ai_config`，再用小样本逐项验收。
 

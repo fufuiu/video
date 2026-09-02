@@ -43,27 +43,30 @@ class TriggerTranscodeAPITest(TestCase):
             status='pending_subtitle_edit'
         )
     
-    @patch('videos.views.process_video')
-    def test_trigger_transcode_success(self, mock_process_video):
+    @patch('videos.views.enqueue_task')
+    def test_trigger_transcode_success(self, mock_enqueue_task):
         """测试：成功触发转码"""
+        mock_enqueue_task.return_value = MagicMock(id='task-transcode-1')
         # 使用 force_authenticate 进行认证
         self.client.force_authenticate(user=self.user)
         
         # 调用API
-        response = self.client.post(f'/api/videos/{self.video.id}/trigger-transcode/')
+        response = self.client.post(f'/api/videos/videos/{self.video.id}/trigger-transcode/')
         
         # 验证响应
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['message'], '转码已启动')
         self.assertEqual(response.json()['video_id'], self.video.id)
-        self.assertEqual(response.json()['status'], 'transcoding')
+        self.assertEqual(response.json()['status'], 'submitted')
+        self.assertEqual(response.json()['task_id'], 'task-transcode-1')
         
         # 验证视频状态已更新
         self.video.refresh_from_db()
         self.assertEqual(self.video.status, 'transcoding')
         
         # 验证转码任务被触发
-        mock_process_video.delay.assert_called_once_with(self.video.id)
+        mock_enqueue_task.assert_called_once()
+        self.assertEqual(mock_enqueue_task.call_args.args[1], self.video.id)
     
     def test_trigger_transcode_wrong_status(self):
         """测试：视频状态不正确时返回错误"""
@@ -75,11 +78,12 @@ class TriggerTranscodeAPITest(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # 调用API
-        response = self.client.post(f'/api/videos/{self.video.id}/trigger-transcode/')
+        response = self.client.post(f'/api/videos/videos/{self.video.id}/trigger-transcode/')
         
         # 验证响应
         self.assertEqual(response.status_code, 400)
-        self.assertIn('无法触发转码', response.json()['error'])
+        self.assertEqual(response.json()['error']['code'], 'VALIDATION_ERROR')
+        self.assertIn('无法触发转码', response.json()['error']['message'])
     
     def test_trigger_transcode_no_permission(self):
         """测试：非视频所有者无权触发转码"""
@@ -87,16 +91,16 @@ class TriggerTranscodeAPITest(TestCase):
         self.client.force_authenticate(user=self.other_user)
         
         # 调用API
-        response = self.client.post(f'/api/videos/{self.video.id}/trigger-transcode/')
+        response = self.client.post(f'/api/videos/videos/{self.video.id}/trigger-transcode/')
         
         # 验证响应
         self.assertEqual(response.status_code, 404)
-        self.assertIn('视频不存在或无权限', response.json()['error'])
+        self.assertEqual(response.json()['error']['code'], 'NOT_FOUND')
     
     def test_trigger_transcode_not_authenticated(self):
         """测试：未登录用户无法触发转码"""
         # 不进行认证，直接调用API
-        response = self.client.post(f'/api/videos/{self.video.id}/trigger-transcode/')
+        response = self.client.post(f'/api/videos/videos/{self.video.id}/trigger-transcode/')
         
         # 验证响应（应该返回401或403）
         self.assertIn(response.status_code, [401, 403])
@@ -107,8 +111,8 @@ class TriggerTranscodeAPITest(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # 调用API（使用不存在的视频ID）
-        response = self.client.post('/api/videos/99999/trigger-transcode/')
+        response = self.client.post('/api/videos/videos/99999/trigger-transcode/')
         
         # 验证响应
         self.assertEqual(response.status_code, 404)
-        self.assertIn('视频不存在或无权限', response.json()['error'])
+        self.assertEqual(response.json()['error']['code'], 'NOT_FOUND')

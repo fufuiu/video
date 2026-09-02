@@ -31,6 +31,23 @@ class OCRService:
                 'details': soft_result,
             }
 
+        provider_name = str(getattr(settings, 'AI_OCR_PROVIDER', 'disabled')).strip().lower()
+        if self.provider is None and provider_name == 'disabled':
+            return {
+                'has_subtitle': False,
+                'subtitle_type': 'none',
+                'subtitle_language': '',
+                'details': {
+                    'has_subtitle': False,
+                    'detected_frames': 0,
+                    'total_frames': 0,
+                    'language': '',
+                    'provider': 'disabled',
+                    'skipped': True,
+                    'reason': 'ocr_disabled',
+                },
+            }
+
         hard_result = self._detect_hard_subtitle(video_path)
         if hard_result['has_subtitle']:
             return {

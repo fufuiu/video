@@ -70,6 +70,7 @@ def parse_moderation_response(response, *, job_id=''):
                 max_confidence = max(max_confidence, confidence)
                 labels.append({
                     'name': label,
+                    'description': str(_get(item, 'description', default='') or ''),
                     'confidence': confidence,
                     'risk_level': frame_risk,
                     'offset': offset,

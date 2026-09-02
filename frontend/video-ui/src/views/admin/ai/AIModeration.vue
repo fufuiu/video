@@ -8,7 +8,7 @@
       <template #actions>
         <div class="header-actions animate__animated animate__fadeInRight animate__faster">
           <el-button @click="helpVisible = true" type="info" plain>
-            <el-icon><QuestionFilled /></el-icon> 参数说明
+            <el-icon><QuestionFilled /></el-icon> 结果说明
           </el-button>
           <el-select v-model="statusFilter" placeholder="审核状态" clearable @change="handleFilterChange" style="width: 140px;">
             <el-option label="全部状态" value="" />
@@ -20,8 +20,8 @@
           <el-select v-model="resultFilter" placeholder="审核结果" clearable @change="handleFilterChange" style="width: 140px;">
             <el-option label="全部结果" value="" />
             <el-option label="安全" value="safe" />
+            <el-option label="待人工复核" value="uncertain" />
             <el-option label="不安全" value="unsafe" />
-            <el-option label="不确定" value="uncertain" />
           </el-select>
           <el-button type="primary" @click="batchModerate" :disabled="selectedVideos.length === 0">
             <el-icon><Cpu /></el-icon> 批量审核 ({{ selectedVideos.length }})
@@ -76,50 +76,36 @@
         
         <el-table-column label="审核结果" width="120" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.result" :type="getResultType(row.result)">
-              {{ getResultText(row.result) }}
+            <el-tag v-if="row.effective_result || row.result" :type="getResultType(row.effective_result || row.result)">
+              {{ getResultText(row.effective_result || row.result) }}
             </el-tag>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         
-        <el-table-column label="置信度" width="100" align="center">
+        <el-table-column label="标签匹配置信度" width="140" align="center">
           <template #default="{ row }">
-            <span v-if="row.confidence > 0">{{ (row.confidence * 100).toFixed(1) }}%</span>
+            <span v-if="row.flagged_frames?.length > 0">
+              {{ ((row.label_confidence ?? row.confidence) * 100).toFixed(1) }}%
+            </span>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         
-        <el-table-column label="风险评分" width="280">
+        <el-table-column label="主要命中原因" min-width="240">
           <template #default="{ row }">
-            <div class="risk-scores" v-if="row.status === 'completed'">
-              <div class="score-item">
-                <span class="score-label">中风险+</span>
-                <el-progress 
-                  :percentage="row.medium_score * 100" 
-                  :color="getScoreColor(row.medium_score)"
-                  :show-text="false"
-                />
-                <span class="score-value">{{ (row.medium_score * 100).toFixed(0) }}%</span>
-              </div>
-              <div class="score-item">
-                <span class="score-label">高风险</span>
-                <el-progress 
-                  :percentage="row.high_score * 100" 
-                  :color="getScoreColor(row.high_score)"
-                  :show-text="false"
-                />
-                <span class="score-value">{{ (row.high_score * 100).toFixed(0) }}%</span>
-              </div>
-            </div>
+            <span v-if="row.flagged_frames?.length">
+              {{ row.flagged_frames[0].label_text || row.flagged_frames[0].label || '疑似风险内容' }}
+            </span>
+            <span v-else-if="row.status === 'completed'" class="text-muted">未命中标签</span>
             <span v-else class="text-muted">待审核</span>
           </template>
         </el-table-column>
         
-        <el-table-column label="问题帧" width="100" align="center">
+        <el-table-column label="命中事件" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.flagged_frames?.length > 0" type="danger" size="small">
-              {{ row.flagged_frames.length }} 帧
+            <el-tag v-if="row.flagged_frames?.length > 0" type="warning" size="small">
+              {{ row.flagged_frames.length }} 条
             </el-tag>
             <span v-else class="text-muted">无</span>
           </template>
@@ -178,7 +164,6 @@
     <ModerationConfigDialog
       v-model="configVisible"
       :title="configTitle"
-      :config="moderationConfig"
       :loading="loading"
       @confirm="confirmModerate"
     />
@@ -190,11 +175,11 @@
       :get-status-text="getStatusText"
       :get-result-type="getResultType"
       :get-result-text="getResultText"
-      :get-score-color="getScoreColor"
-      :get-score-level="getScoreLevel"
       :format-date-time="formatDateTime"
       :format-time="formatTime"
-      @submit-review="handleReviewAction('submit')"
+      @confirm-safe="handleReviewAction('confirmed_safe')"
+      @confirm-false-positive="handleReviewAction('false_positive')"
+      @confirm-violation="handleReviewAction('confirmed_violation')"
       @revoke-review="handleReviewAction('revoke')"
       @re-moderate="handleReModerate"
     />
@@ -216,7 +201,8 @@ import {
   submitAIModeration, 
   batchAIModeration,
   submitAIReview,
-  revokeAIReview
+  revokeAIReview,
+  reModerateVideo
 } from '@/api/admin';
 
 // 子组件
@@ -237,21 +223,16 @@ const selectedVideos = ref([]);
 const detailVisible = ref(false);
 const helpVisible = ref(false);
 const configVisible = ref(false);
-const configTitle = ref('AI 审核参数配置');
+const configTitle = ref('确认云端 AI 审核');
 const currentDetail = ref(null);
 const currentModerationVideo = ref(null);
-
-const moderationConfig = reactive({
-  threshold_level: 'medium',
-  threshold: 0.6,
-  fps: 1
-});
 
 // 统计数据
 const stats = reactive({
   pending: 0,
   processing: 0,
   safe: 0,
+  uncertain: 0,
   unsafe: 0
 });
 
@@ -286,7 +267,7 @@ const fetchModerationList = async () => {
 // 审核单个视频
 const moderateVideo = (row) => {
   currentModerationVideo.value = row;
-  configTitle.value = 'AI 审核参数配置 - ' + row.video.title;
+  configTitle.value = '确认云端 AI 审核 - ' + row.video.title;
   configVisible.value = true;
 };
 
@@ -297,7 +278,7 @@ const batchModerate = () => {
     return;
   }
   currentModerationVideo.value = null;
-  configTitle.value = '批量审核参数配置 (' + selectedVideos.value.length + ' 个视频)';
+  configTitle.value = '确认批量云端审核 (' + selectedVideos.value.length + ' 个视频)';
   configVisible.value = true;
 };
 
@@ -309,14 +290,12 @@ const confirmModerate = async () => {
     
     if (currentModerationVideo.value) {
       await submitAIModeration({
-        video_id: currentModerationVideo.value.video.id,
-        ...moderationConfig
+        video_id: currentModerationVideo.value.video.id
       });
     } else {
       const videoIds = selectedVideos.value.map(function(v) { return v.video.id; });
       await batchAIModeration({
-        video_ids: videoIds,
-        ...moderationConfig
+        video_ids: videoIds
       });
     }
 
@@ -333,18 +312,7 @@ const confirmModerate = async () => {
 // 查看详情
 const viewDetail = async (row) => {
   try {
-    console.log('请求审核详情，ID:', row.id);
     const response = await getAIModerationDetail(row.id);
-    console.log('=== 审核详情响应 ===');
-    console.log('完整响应:', response);
-    console.log('视频信息:', response.video);
-    if (response.video) {
-      console.log('视频 ID:', response.video.id);
-      console.log('视频标题:', response.video.title);
-      console.log('视频用户:', response.video.user);
-      console.log('视频创建时间:', response.video.created_at);
-    }
-    console.log('==================');
     currentDetail.value = response;
     detailVisible.value = true;
   } catch (error) {
@@ -356,19 +324,39 @@ const viewDetail = async (row) => {
 // 提交人工审核/撤销审核
 const handleReviewAction = async (action) => {
   try {
-    const isSubmit = action === 'submit';
-    const title = isSubmit ? '提交人工审核' : '撤销审核';
-    const message = isSubmit ? '确认将该 AI 审核结果提交至人工审核流程？' : '确认撤销该审核结果并重新变为待处理状态？';
-    
-    await ElMessageBox.confirm(message, title, { type: 'warning' });
-    
     loading.value = true;
-    if (isSubmit) {
-      await submitAIReview({ moderation_id: currentDetail.value.id });
-      ElMessage.success('已成功提交至人工审核');
-    } else {
+    if (action === 'revoke') {
+      await ElMessageBox.confirm('确认撤销人工结论并恢复待处理状态？', '撤销人工结论', { type: 'warning' });
       await revokeAIReview({ moderation_id: currentDetail.value.id });
-      ElMessage.success('已成功撤销审核结果');
+      ElMessage.success('已撤销人工结论');
+    } else {
+      const isSafe = action === 'confirmed_safe';
+      const isFalsePositive = action === 'false_positive';
+      const prompt = await ElMessageBox.prompt(
+        isSafe
+          ? '确认视频安全并通过？可填写判断依据。'
+          : isFalsePositive
+            ? '确认这是 AI 误报并通过该视频？可填写判断依据。'
+            : '确认视频违规并拒绝该视频？请填写判断依据。',
+        isSafe ? '确认安全' : isFalsePositive ? '确认误报' : '确认违规',
+        {
+          type: isFalsePositive ? 'success' : 'warning',
+          inputPlaceholder: '人工复核备注（可选）',
+          inputValidator: value => value.length <= 500 || '备注不能超过 500 个字符'
+        }
+      );
+      await submitAIReview({
+        moderation_id: currentDetail.value.id,
+        action,
+        remark: prompt.value || ''
+      });
+      ElMessage.success(
+        isSafe
+          ? '已确认安全并通过视频'
+          : isFalsePositive
+            ? '已确认误报并通过视频'
+            : '已确认违规并拒绝视频'
+      );
     }
     
     detailVisible.value = false;
@@ -383,13 +371,19 @@ const handleReviewAction = async (action) => {
 };
 
 // 重新审核
-const handleReModerate = () => {
-  const row = {
-    id: currentDetail.value.id,
-    video: currentDetail.value.video
-  };
-  detailVisible.value = false;
-  moderateVideo(row);
+const handleReModerate = async () => {
+  try {
+    await ElMessageBox.confirm('重新审核会清除现有人工结论，确认继续？', '重新 AI 审核', { type: 'warning' });
+    loading.value = true;
+    await reModerateVideo({ moderation_id: currentDetail.value.id });
+    ElMessage.success('重新审核任务已提交');
+    detailVisible.value = false;
+    fetchModerationList();
+  } catch (error) {
+    if (error !== 'cancel') ElMessage.error('重新审核提交失败');
+  } finally {
+    loading.value = false;
+  }
 };
 
 // 选择变化
@@ -448,21 +442,9 @@ const getResultText = (result) => {
   const map = {
     safe: '安全',
     unsafe: '不安全',
-    uncertain: '不确定'
+    uncertain: '待人工复核'
   };
   return map[result] || '未知';
-};
-
-const getScoreColor = (score) => {
-  if (score < 0.3) return '#67c23a';
-  if (score < 0.6) return '#e6a23c';
-  return '#f56c6c';
-};
-
-const getScoreLevel = (score) => {
-  if (score < 0.3) return 'low';
-  if (score < 0.6) return 'medium';
-  return 'high';
 };
 
 const formatDate = (dateStr) => {

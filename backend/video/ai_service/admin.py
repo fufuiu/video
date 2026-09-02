@@ -4,8 +4,10 @@ from .models import ModerationResult, FrameRecognition, VideoSummary
 
 @admin.register(ModerationResult)
 class ModerationResultAdmin(admin.ModelAdmin):
-    list_display = ['id', 'video', 'status', 'result', 'confidence', 'created_at']
-    list_filter = ['status', 'result', 'created_at']
+    list_display = [
+        'id', 'video', 'status', 'result', 'human_decision', 'confidence', 'created_at'
+    ]
+    list_filter = ['status', 'result', 'human_decision', 'created_at']
     search_fields = ['video__title']
     readonly_fields = ['created_at', 'updated_at']
     
@@ -18,6 +20,12 @@ class ModerationResultAdmin(admin.ModelAdmin):
         }),
         ('问题帧', {
             'fields': ('flagged_frames',)
+        }),
+        ('人工复核', {
+            'fields': (
+                'human_decision', 'human_reviewer', 'human_reviewed_at',
+                'human_review_remark',
+            )
         }),
         ('其他信息', {
             'fields': ('details', 'error_message', 'created_at', 'updated_at')

@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from videos.models import Video
 
 
@@ -15,7 +16,14 @@ class ModerationResult(models.Model):
     RESULT_CHOICES = [
         ('safe', '安全'),
         ('unsafe', '不安全'),
-        ('uncertain', '不确定'),
+        ('uncertain', '待人工复核'),
+    ]
+
+    HUMAN_DECISION_CHOICES = [
+        ('pending', '未人工复核'),
+        ('confirmed_safe', '确认安全'),
+        ('false_positive', '确认误报'),
+        ('confirmed_violation', '确认违规'),
     ]
     
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='ai_moderations')
@@ -36,6 +44,23 @@ class ModerationResult(models.Model):
     # 详细信息
     details = models.JSONField(default=dict, blank=True, help_text='详细审核信息')
     error_message = models.TextField(blank=True, help_text='错误信息')
+
+    # AI 结果保持原样，人工结论单独留痕，避免覆盖供应商证据。
+    human_decision = models.CharField(
+        max_length=30,
+        choices=HUMAN_DECISION_CHOICES,
+        default='pending',
+        db_index=True,
+    )
+    human_reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='human_moderation_reviews',
+    )
+    human_reviewed_at = models.DateTimeField(null=True, blank=True)
+    human_review_remark = models.TextField(blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

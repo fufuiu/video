@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 from django.conf import settings
 
@@ -27,3 +28,29 @@ def extract_audio_for_asr(video_path, output_path):
         capture_output=True,
         timeout=int(getattr(settings, 'AI_AUDIO_EXTRACT_TIMEOUT_SECONDS', 900)),
     )
+
+
+def extract_moderation_frame(video_path, output_path, timestamp):
+    """Extract one exact local frame for durable human review."""
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        'ffmpeg',
+        '-y',
+        '-i',
+        str(video_path),
+        '-ss',
+        f'{max(0.0, float(timestamp)):.3f}',
+        '-frames:v',
+        '1',
+        '-q:v',
+        '2',
+        str(output),
+    ]
+    subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        timeout=int(getattr(settings, 'AI_MODERATION_FRAME_EXTRACT_TIMEOUT_SECONDS', 30)),
+    )
+    return output
