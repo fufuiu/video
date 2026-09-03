@@ -187,7 +187,7 @@ export function updateVideoSubtitles(videoId, subtitles, style = null) {
   });
 }
 
-// 异步生成字幕（Whisper）
+// 异步生成字幕（由后端当前配置的 ASR Provider 执行）
 export function generateSubtitles(videoId, language = 'auto') {
   return service({
     url: `/ai/subtitle/${videoId}/generate/`,

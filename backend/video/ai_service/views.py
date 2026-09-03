@@ -10,6 +10,7 @@ from core.task_lifecycle import enqueue_task, serialize_task_result, task_contex
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.utils import timezone
+from django.db import transaction
 from celery.result import AsyncResult
 import logging
 
@@ -28,6 +29,41 @@ class ModerationViewSet(viewsets.ViewSet):
     """AI 内容审核视图集"""
     
     permission_classes = [IsAdminUser]
+
+    @staticmethod
+    def _mark_processing(video):
+        """Persist the accepted state before the asynchronous worker starts."""
+        from .models import ModerationResult
+
+        moderation = ModerationResult.objects.filter(
+            video_id=video.id
+        ).order_by('-created_at').first()
+        if moderation is None:
+            moderation = ModerationResult(video=video)
+
+        moderation.status = 'processing'
+        moderation.result = None
+        moderation.confidence = 0.0
+        moderation.neutral_score = 0.0
+        moderation.low_score = 0.0
+        moderation.medium_score = 0.0
+        moderation.high_score = 0.0
+        moderation.flagged_frames = []
+        moderation.error_message = ''
+        moderation.human_decision = 'pending'
+        moderation.human_reviewer = None
+        moderation.human_reviewed_at = None
+        moderation.human_review_remark = ''
+        moderation.save()
+        return moderation
+
+    @staticmethod
+    def _mark_dispatch_failed(moderations):
+        """Expose queue submission failures instead of leaving rows processing."""
+        for moderation in moderations:
+            moderation.status = 'failed'
+            moderation.error_message = '审核任务提交失败，请稍后重试'
+            moderation.save(update_fields=['status', 'error_message', 'updated_at'])
     
     def list(self, request):
         """
@@ -82,7 +118,9 @@ class ModerationViewSet(viewsets.ViewSet):
                 })
         
         # 构建查询
-        queryset = ModerationResult.objects.select_related('video', 'video__user').all()
+        queryset = ModerationResult.objects.select_related(
+            'video', 'video__user', 'human_reviewer'
+        ).all()
         
         if status_filter:
             queryset = queryset.filter(status=status_filter)
@@ -152,12 +190,16 @@ class ModerationViewSet(viewsets.ViewSet):
                         },
                         'status': 'pending',
                         'result': None,
+                        'effective_result': None,
                         'confidence': 0.0,
+                        'label_confidence': 0.0,
                         'neutral_score': 0.0,
                         'low_score': 0.0,
                         'medium_score': 0.0,
                         'high_score': 0.0,
                         'flagged_frames': [],
+                        'human_decision': 'pending',
+                        'human_reviewed_at': None,
                         'created_at': None,  # 未审核，无审核创建时间
                         'updated_at': None,  # 未审核，无审核更新时间
                     })
@@ -189,7 +231,9 @@ class ModerationViewSet(viewsets.ViewSet):
         from .serializers import ModerationResultSerializer
         
         try:
-            moderation = ModerationResult.objects.select_related('video', 'video__user').get(pk=pk)
+            moderation = ModerationResult.objects.select_related(
+                'video', 'video__user', 'human_reviewer'
+            ).get(pk=pk)
             serializer = ModerationResultSerializer(moderation, context={'request': request})
             return Response(serializer.data)
         except ModerationResult.DoesNotExist:
@@ -205,15 +249,15 @@ class ModerationViewSet(viewsets.ViewSet):
         
         请求参数:
         - moderation_id: AI 审核记录 ID
-        - action: 操作 (approve/reject)
+        - action: 操作 (confirmed_safe/false_positive/confirmed_violation)
         - remark: 备注
         """
         from .models import ModerationResult
         from videos.models import Video
         
         moderation_id = request.data.get('moderation_id')
-        action = request.data.get('action')  # approve/reject
-        remark = request.data.get('remark', '')
+        action = request.data.get('action')
+        remark = str(request.data.get('remark', '') or '').strip()
         
         if not moderation_id or not action:
             return Response(
@@ -221,33 +265,73 @@ class ModerationViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        if action not in ['approve', 'reject']:
+        action = {
+            'approve': 'false_positive',
+            'reject': 'confirmed_violation',
+        }.get(action, action)
+        if action not in ['confirmed_safe', 'false_positive', 'confirmed_violation']:
             return Response(
-                {'detail': 'action 必须是 approve 或 reject'},
+                {'detail': 'action 必须是 confirmed_safe、false_positive 或 confirmed_violation'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            moderation = ModerationResult.objects.select_related('video').get(pk=moderation_id)
-            video = moderation.video
-            
-            # 更新视频状态
-            if action == 'approve':
-                video.status = 'approved'
-                video.is_published = True
-            else:
-                video.status = 'rejected'
-                video.is_published = False
-            
-            video.reviewer = request.user
-            video.reviewed_at = timezone.now()
-            video.review_remark = remark
-            video.save(update_fields=['status', 'is_published', 'reviewer', 'reviewed_at', 'review_remark'])
+            with transaction.atomic():
+                moderation = ModerationResult.objects.select_for_update().select_related('video').get(
+                    pk=moderation_id
+                )
+                if moderation.status != 'completed':
+                    return Response(
+                        {'detail': 'AI 审核尚未完成，不能提交人工结论'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                video = moderation.video
+                reviewed_at = timezone.now()
+
+                if action in {'confirmed_safe', 'false_positive'}:
+                    video.status = 'approved'
+                    video.is_published = True
+                    response_text = (
+                        '已确认安全并通过视频'
+                        if action == 'confirmed_safe'
+                        else '已确认误报并通过视频'
+                    )
+                else:
+                    video.status = 'rejected'
+                    video.is_published = False
+                    response_text = '已确认违规并拒绝视频'
+
+                moderation.human_decision = action
+                moderation.human_reviewer = request.user
+                moderation.human_reviewed_at = reviewed_at
+                moderation.human_review_remark = remark
+                moderation.details = dict(moderation.details or {})
+                review_history = list(moderation.details.get('human_review_history') or [])
+                review_history.append({
+                    'action': action,
+                    'reviewer_id': request.user.id,
+                    'reviewer': request.user.username,
+                    'reviewed_at': reviewed_at.isoformat(),
+                    'remark': remark,
+                })
+                moderation.details['human_review_history'] = review_history
+                moderation.save(update_fields=[
+                    'human_decision', 'human_reviewer', 'human_reviewed_at',
+                    'human_review_remark', 'details', 'updated_at',
+                ])
+
+                video.reviewer = request.user
+                video.reviewed_at = reviewed_at
+                video.review_remark = remark
+                video.save(update_fields=[
+                    'status', 'is_published', 'reviewer', 'reviewed_at', 'review_remark'
+                ])
             
             return Response({
-                'detail': f'视频已{("通过" if action == "approve" else "拒绝")}',
+                'detail': response_text,
                 'video_id': video.id,
-                'status': video.status
+                'status': video.status,
+                'human_decision': moderation.human_decision,
             })
             
         except ModerationResult.DoesNotExist:
@@ -285,8 +369,8 @@ class ModerationViewSet(viewsets.ViewSet):
             moderation = ModerationResult.objects.select_related('video').get(pk=moderation_id)
             video = moderation.video
             
-            # 检查视频是否已审核
-            if video.status not in ['approved', 'rejected']:
+            # 检查是否已经形成可审计的人工结论
+            if moderation.human_decision == 'pending':
                 return Response(
                     {'detail': '该视频未进行人工审核，无需撤销'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -299,6 +383,25 @@ class ModerationViewSet(viewsets.ViewSet):
             video.reviewed_at = None
             video.review_remark = ''
             video.save(update_fields=['status', 'is_published', 'reviewer', 'reviewed_at', 'review_remark'])
+
+            moderation.human_decision = 'pending'
+            moderation.human_reviewer = None
+            moderation.human_reviewed_at = None
+            moderation.human_review_remark = ''
+            moderation.details = dict(moderation.details or {})
+            review_history = list(moderation.details.get('human_review_history') or [])
+            review_history.append({
+                'action': 'revoked',
+                'reviewer_id': request.user.id,
+                'reviewer': request.user.username,
+                'reviewed_at': timezone.now().isoformat(),
+                'remark': '',
+            })
+            moderation.details['human_review_history'] = review_history
+            moderation.save(update_fields=[
+                'human_decision', 'human_reviewer', 'human_reviewed_at',
+                'human_review_remark', 'details', 'updated_at',
+            ])
             
             return Response({
                 'detail': '审核结果已撤销',
@@ -325,9 +428,7 @@ class ModerationViewSet(viewsets.ViewSet):
         
         请求参数:
         - moderation_id: 原审核记录 ID
-        - threshold_level: 检测级别 (可选)
-        - threshold: 置信度阈值 (可选)
-        - fps: 每秒抽帧数 (可选)
+        云端策略由阿里云控制台统一管理，不接受旧本地模型参数。
         """
         from .models import ModerationResult
         from .tasks import moderate_video_task
@@ -343,31 +444,6 @@ class ModerationViewSet(viewsets.ViewSet):
             moderation = ModerationResult.objects.select_related('video').get(pk=moderation_id)
             video = moderation.video
             
-            # 获取参数（如果没有提供，使用之前的参数）
-            old_details = moderation.details or {}
-            threshold_level = request.data.get('threshold_level', old_details.get('threshold_level', 'medium'))
-            threshold = float(request.data.get('threshold', old_details.get('threshold', 0.6)))
-            fps = int(request.data.get('fps', old_details.get('fps', 1)))
-            
-            # 验证参数
-            if threshold_level not in ['low', 'medium', 'high']:
-                return Response(
-                    {'detail': 'threshold_level 必须是 low/medium/high'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            if not 0 <= threshold <= 1:
-                return Response(
-                    {'detail': 'threshold 必须在 0-1 之间'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            if fps < 1 or fps > 10:
-                return Response(
-                    {'detail': 'fps 必须在 1-10 之间'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
             # 重置审核状态
             moderation.status = 'processing'
             moderation.result = None
@@ -378,17 +454,28 @@ class ModerationViewSet(viewsets.ViewSet):
             moderation.high_score = 0.0
             moderation.flagged_frames = []
             moderation.error_message = ''
+            moderation.human_decision = 'pending'
+            moderation.human_reviewer = None
+            moderation.human_reviewed_at = None
+            moderation.human_review_remark = ''
             moderation.save()
+
+            video.status = 'pending'
+            video.is_published = False
+            video.reviewer = None
+            video.reviewed_at = None
+            video.review_remark = ''
+            video.save(update_fields=[
+                'status', 'is_published', 'reviewer', 'reviewed_at', 'review_remark'
+            ])
             
             # 提交新的审核任务
             async_result = enqueue_task(
                 moderate_video_task,
                 video.id,
-                threshold_level,
-                threshold,
-                fps,
                 request=request,
                 target_video_id=video.id,
+                dedupe_key=f'video:{video.id}:moderation',
             )
             
             return Response({
@@ -397,11 +484,7 @@ class ModerationViewSet(viewsets.ViewSet):
                 'moderation_id': moderation.id,
                 'task_id': async_result.id,
                 'status': 'submitted',
-                'params': {
-                    'threshold_level': threshold_level,
-                    'threshold': threshold,
-                    'fps': fps
-                }
+                'strategy': 'managed_in_aliyun_console',
             })
             
         except ModerationResult.DoesNotExist:
@@ -423,9 +506,7 @@ class ModerationViewSet(viewsets.ViewSet):
         
         请求参数:
         - video_id: 视频 ID (必需)
-        - threshold_level: 检测级别 (可选, 默认 medium)
-        - threshold: 置信度阈值 (可选, 默认 0.6)
-        - fps: 每秒抽帧数 (可选, 默认 1)
+        云端策略由阿里云控制台统一管理。
         """
         from videos.models import Video
         from .tasks import moderate_video_task
@@ -446,55 +527,31 @@ class ModerationViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # 获取参数
-        threshold_level = request.data.get('threshold_level', 'medium')
-        threshold = float(request.data.get('threshold', 0.6))
-        fps = int(request.data.get('fps', 1))
-        
-        # 验证参数
-        if threshold_level not in ['low', 'medium', 'high']:
-            return Response(
-                {'detail': 'threshold_level 必须是 low/medium/high'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if not 0 <= threshold <= 1:
-            return Response(
-                {'detail': 'threshold 必须在 0-1 之间'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if fps < 1 or fps > 10:
-            return Response(
-                {'detail': 'fps 必须在 1-10 之间'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+        moderation = None
         try:
+            # 接口接单即落库，避免前端在 Worker 启动前仍读到“待审核”。
+            moderation = self._mark_processing(video)
+
             # 提交异步任务
             async_result = enqueue_task(
                 moderate_video_task,
                 video_id,
-                threshold_level,
-                threshold,
-                fps,
                 request=request,
                 target_video_id=video_id,
-                dedupe_key=f"video:{video_id}:moderation:{threshold_level}:{threshold}:{fps}",
+                dedupe_key=f'video:{video_id}:moderation',
             )
             
             return Response({
                 'detail': '审核任务已提交',
                 'video_id': video_id,
+                'moderation_id': moderation.id,
                 'task_id': async_result.id,
-                'status': 'submitted',
-                'params': {
-                    'threshold_level': threshold_level,
-                    'threshold': threshold,
-                    'fps': fps
-                }
+                'status': 'processing',
+                'strategy': 'managed_in_aliyun_console',
             })
         except Exception as e:
+            if moderation is not None:
+                self._mark_dispatch_failed([moderation])
             logger.error(f"提交审核任务失败: {str(e)}", exc_info=True)
             return Response(
                 {'detail': '提交审核任务失败，请稍后重试'},
@@ -508,11 +565,10 @@ class ModerationViewSet(viewsets.ViewSet):
         
         请求参数:
         - video_ids: 视频 ID 列表 (必需)
-        - threshold_level: 检测级别 (可选)
-        - threshold: 置信度阈值 (可选)
-        - fps: 每秒抽帧数 (可选)
+        云端策略由阿里云控制台统一管理。
         """
         from .tasks import batch_moderate_videos
+        from videos.models import Video
         
         video_ids = request.data.get('video_ids', [])
         if not video_ids or not isinstance(video_ids, list):
@@ -521,27 +577,26 @@ class ModerationViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        threshold_level = request.data.get('threshold_level', 'medium')
-        threshold = float(request.data.get('threshold', 0.6))
-        fps = int(request.data.get('fps', 1))
-        
+        moderations = []
         try:
+            videos = Video.objects.filter(id__in=video_ids)
+            moderations = [self._mark_processing(video) for video in videos]
+
             result = enqueue_task(
                 batch_moderate_videos,
                 video_ids,
-                threshold_level,
-                threshold,
-                fps,
                 request=request,
             )
             
             return Response({
                 'detail': f'已提交 {len(video_ids)} 个审核任务',
                 'task_id': result.id,
-                'status': 'submitted',
+                'status': 'processing',
+                'moderation_ids': [item.id for item in moderations],
                 'video_count': len(video_ids)
             })
         except Exception as e:
+            self._mark_dispatch_failed(moderations)
             logger.error(f"批量审核失败: {str(e)}", exc_info=True)
             return Response(
                 {'detail': '批量审核失败，请稍后重试'},
@@ -657,7 +712,7 @@ class SubtitleViewSet(viewsets.ViewSet):
     def _get_video(self, video_id):
         """获取视频对象"""
         from videos.models import Video
-        return get_object_or_404(Video, id=video_id)
+        return get_object_or_404(Video, id=video_id, deleted_at__isnull=True)
     
     def _check_video_permission(self, video, user, allow_staff=True):
         """检查视频权限"""
@@ -800,7 +855,8 @@ class SubtitleViewSet(viewsets.ViewSet):
         if request.method == 'GET':
             return Response({
                 "video_id": video.id,
-                "subtitles": video.subtitles_draft or []
+                "subtitles": video.subtitles_draft or [],
+                "style": video.subtitle_style or {},
             })
         
         # PUT 请求：保存字幕
@@ -829,17 +885,29 @@ class SubtitleViewSet(viewsets.ViewSet):
                     {"detail": f"subtitles[{i}] 缺少 startTime/endTime"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+        subtitle_style = request.data.get('style')
+        if subtitle_style is not None and not isinstance(subtitle_style, dict):
+            return Response(
+                {"detail": "style 必须为对象"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # 保存字幕
         video.subtitles_draft = subtitles
         video.has_subtitle = len(subtitles) > 0
         video.subtitle_type = 'soft' if video.has_subtitle else 'none'
-        video.save(update_fields=['subtitles_draft', 'has_subtitle', 'subtitle_type'])
+        update_fields = ['subtitles_draft', 'has_subtitle', 'subtitle_type']
+        if subtitle_style is not None:
+            video.subtitle_style = subtitle_style
+            update_fields.append('subtitle_style')
+        video.save(update_fields=update_fields)
         
         return Response({
             "detail": "字幕已保存",
             "video_id": video.id,
-            "count": len(subtitles)
+            "count": len(subtitles),
+            "style": video.subtitle_style or {},
         })
     
     @action(detail=True, methods=['get'], url_path='vtt')

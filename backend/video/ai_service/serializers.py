@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import ModerationResult, FrameRecognition, VideoSummary
+from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
@@ -9,13 +10,19 @@ class ModerationResultSerializer(serializers.ModelSerializer):
     """内容审核结果序列化器（详情）"""
     video = serializers.SerializerMethodField()
     flagged_frames = serializers.SerializerMethodField()
+    label_confidence = serializers.FloatField(source='confidence', read_only=True)
+    effective_result = serializers.SerializerMethodField()
+    human_reviewer = serializers.SerializerMethodField()
     
     class Meta:
         model = ModerationResult
         fields = [
-            'id', 'video', 'status', 'result', 'confidence',
+            'id', 'video', 'status', 'result', 'effective_result',
+            'confidence', 'label_confidence',
             'neutral_score', 'low_score', 'medium_score', 'high_score',
             'flagged_frames', 'details', 'error_message',
+            'human_decision', 'human_reviewer', 'human_reviewed_at',
+            'human_review_remark',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -31,6 +38,7 @@ class ModerationResultSerializer(serializers.ModelSerializer):
             'id': obj.video.id,
             'title': obj.video.title,
             'thumbnail': request.build_absolute_uri(obj.video.thumbnail.url) if request and obj.video.thumbnail else None,
+            'playback_url': request.build_absolute_uri(obj.video.video_file.url) if request and obj.video.video_file else None,
             'user': {
                 'id': obj.video.user.id,
                 'username': obj.video.user.username,
@@ -38,7 +46,7 @@ class ModerationResultSerializer(serializers.ModelSerializer):
             } if obj.video.user else None,
             'created_at': obj.video.created_at
         }
-        logger.info(f"序列化视频信息: video_id={obj.video.id}, title={obj.video.title}, user={obj.video.user.username if obj.video.user else None}")
+        logger.debug('序列化审核视频 video_id=%s', obj.video.id)
         return video_data
     
     def get_flagged_frames(self, obj):
@@ -53,33 +61,50 @@ class ModerationResultSerializer(serializers.ModelSerializer):
             # 转换 image_path 为 image_url
             if 'image_path' in frame_data and request:
                 from django.conf import settings
-                image_path = frame_data.pop('image_path')
+                image_path = Path(str(frame_data.pop('image_path'))).name
                 # 构建完整的媒体 URL
                 media_url = f"{settings.MEDIA_URL}ai_moderation/flagged_frames/{obj.video_id}/{image_path}"
                 frame_data['image_url'] = request.build_absolute_uri(media_url)
             
             # 添加 reason 字段（如果没有）
             if 'reason' not in frame_data:
-                level = frame_data.get('level', 'unknown')
+                label = frame_data.get('label_text') or frame_data.get('label') or '疑似风险内容'
                 confidence = frame_data.get('confidence', 0)
-                frame_data['reason'] = f'检测到 {level} 级别风险内容（置信度: {confidence:.2%}）'
+                frame_data['reason'] = f'{label}（标签匹配置信度 {confidence:.2%}）'
             
             result.append(frame_data)
         
         return result
+
+    def get_effective_result(self, obj):
+        if obj.human_decision in {'confirmed_safe', 'false_positive'}:
+            return 'safe'
+        if obj.human_decision == 'confirmed_violation':
+            return 'unsafe'
+        return obj.result
+
+    def get_human_reviewer(self, obj):
+        reviewer = obj.human_reviewer
+        if not reviewer:
+            return None
+        return {'id': reviewer.id, 'username': reviewer.username}
 
 
 class ModerationListSerializer(serializers.ModelSerializer):
     """审核列表序列化器（简化版）"""
     video = serializers.SerializerMethodField()
     flagged_frames = serializers.SerializerMethodField()
+    label_confidence = serializers.FloatField(source='confidence', read_only=True)
+    effective_result = serializers.SerializerMethodField()
     
     class Meta:
         model = ModerationResult
         fields = [
-            'id', 'video', 'status', 'result', 'confidence',
+            'id', 'video', 'status', 'result', 'effective_result',
+            'confidence', 'label_confidence',
             'neutral_score', 'low_score', 'medium_score', 'high_score',
-            'flagged_frames', 'error_message', 'created_at', 'updated_at'
+            'flagged_frames', 'error_message', 'human_decision',
+            'human_reviewed_at', 'created_at', 'updated_at'
         ]
     
     def get_video(self, obj):
@@ -102,6 +127,13 @@ class ModerationListSerializer(serializers.ModelSerializer):
     def get_flagged_frames(self, obj):
         """返回问题帧列表（列表视图只需要数量，但保持数据结构一致）"""
         return obj.flagged_frames or []
+
+    def get_effective_result(self, obj):
+        if obj.human_decision in {'confirmed_safe', 'false_positive'}:
+            return 'safe'
+        if obj.human_decision == 'confirmed_violation':
+            return 'unsafe'
+        return obj.result
 
 
 class ModerationStatsSerializer(serializers.Serializer):

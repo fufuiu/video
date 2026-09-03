@@ -2,35 +2,38 @@
   <el-dialog 
     :model-value="modelValue"
     @update:model-value="$emit('update:modelValue', $event)"
-    title="AI 审核参数说明" 
+    title="AI 审核结果说明"
     width="800px"
     append-to-body
   >
     <div class="help-content">
-      <el-alert type="success" :closable="false" style="margin-bottom: 20px;">
+      <el-alert type="info" :closable="false" style="margin-bottom: 20px;">
         <template #title>
           <div style="font-size: 15px; line-height: 1.8;">
             <strong>核心概念</strong><br/>
-            AI 模型会对视频的每一帧图片进行分类，输出风险等级的概率值。
+            百分比表示供应商对某个标签的匹配置信度，不是整个视频的危险概率。
           </div>
         </template>
       </el-alert>
 
-      <h3 style="margin-top: 24px;">风险等级说明</h3>
+      <h3 style="margin-top: 24px;">总体结论</h3>
       <div class="help-section">
         <div class="help-item">
-          <h4>Neutral（正常内容）</h4>
-          <p>图片是安全、正常内容的概率。</p>
+          <h4>安全</h4>
+          <p>供应商没有返回需要处理的标签，可以自动通过。</p>
         </div>
         <div class="help-item">
-          <h4>Medium+（中风险及以上）</h4>
-          <p>包含：明显暴露、裸露、性暗示等内容。</p>
+          <h4>待人工复核</h4>
+          <p>供应商返回低或中风险标签，需要结合命中画面判断，不能直接认定违规。</p>
         </div>
         <div class="help-item">
-          <h4>High（高风险）</h4>
-          <p>包含：色情、露骨、明确违规内容。</p>
+          <h4>不安全</h4>
+          <p>供应商返回高风险结论，仍保留人工确认和审计记录。</p>
         </div>
       </div>
+      <el-alert type="warning" :closable="false" show-icon>
+        教程界面小字、人名、新闻截图和代码字符串都可能误报。请查看命中时间段和截图，再选择“确认误报”或“确认违规”。
+      </el-alert>
     </div>
     <template #footer>
       <el-button type="primary" @click="$emit('update:modelValue', false)">我知道了</el-button>

@@ -15,10 +15,20 @@ Django ASGI/Uvicorn + Django REST Framework
         └── Celery Beat：定时清理、预约发布、系统监控
                 │
                 ├── FFmpeg/ffprobe：视频媒体处理
-                ├── PaddleOCR：文字识别
-                ├── Whisper/faster-whisper：语音识别
+                ├── 阿里云百炼 Fun-ASR：语音转字幕
+                ├── 阿里云 OCR：可选的画面硬字幕检测
+                ├── 阿里云内容安全：视频审核
+                ├── 阿里云 OSS：AI 临时文件交换
                 └── DeepSeek：字幕优化、翻译、摘要、标签
 ```
+
+### 1.1 当前媒体存储边界
+
+- 业务原视频、转码结果、封面和审核截图当前由 Django `FileSystemStorage` 保存在 `backend/video/media/`。
+- OSS 的 `ai-temp/` 只用于 ASR 和视频审核的临时交换，任务结束立即尝试删除，并由 1 天生命周期规则兜底；它不是业务媒体库。
+- 单机开发和比赛演示可以继续使用本地媒体目录，但必须把该目录纳入备份，部署时也必须使用持久磁盘，不能依赖容器临时文件系统。
+- 正式多用户部署或多实例 Worker 应把业务媒体迁移到私有 OSS：数据库保存对象键，应用按权限生成短期访问地址；`media/` 永久对象与 `ai-temp/` 临时对象必须使用不同前缀和生命周期规则。
+- 当前已有本地 FFmpeg 转码链路，近期接入 OSS 即可；只有需要大规模 CDN 分发、云转码、DRM 或完整媒资管理时，再评估阿里云视频点播 VOD。
 
 ## 2. 后端模块
 
@@ -45,7 +55,7 @@ Django ASGI/Uvicorn + Django REST Framework
 
 1. API 接收上传或处理请求，并创建/更新业务记录。
 2. 长任务提交到 Celery；任务消息进入 Redis DB 0。
-3. Worker 执行 FFmpeg、OCR、Whisper 或 AI 调用。
+3. Worker 执行 FFmpeg，或通过 Provider 调用 Fun-ASR、可选 OCR、内容安全和 DeepSeek。
 4. 任务状态和结果写回 MySQL，必要时写入媒体目录。
 5. 前端通过状态接口或 WebSocket 通知获得进度。
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -28,6 +29,16 @@ def build_object_key(local_path, *, purpose='ai-input', prefix='ai-temp/'):
     safe_prefix = str(prefix or 'ai-temp/').strip('/')
     date_path = datetime.now(timezone.utc).strftime('%Y/%m/%d')
     return f'{safe_prefix}/{safe_purpose}/{date_path}/{uuid4().hex}{suffix}'
+
+
+def build_purpose_prefix(*, purpose='moderation-video', prefix='ai-temp/'):
+    safe_purpose = re.sub(r'[^a-zA-Z0-9_-]+', '-', str(purpose)).strip('-')
+    if not safe_purpose:
+        raise ValueError('临时对象用途不能为空')
+    safe_prefix = str(prefix or 'ai-temp/').strip('/')
+    if not safe_prefix:
+        raise ValueError('OSS 临时对象前缀不能为空')
+    return f'{safe_prefix}/{safe_purpose}/'
 
 
 class AliyunOSSTemporaryStorage(TemporaryStorage):
@@ -92,3 +103,65 @@ class AliyunOSSTemporaryStorage(TemporaryStorage):
             raise
         except Exception as exc:
             raise ProviderUnavailableError('清理 OSS 临时文件失败', provider='aliyun-oss') from exc
+
+    def list_objects(self, *, purpose='moderation-video'):
+        prefix = build_purpose_prefix(purpose=purpose, prefix=self.prefix)
+        try:
+            oss2 = _load_oss2()
+            return [
+                {
+                    'key': item.key,
+                    'size': int(item.size or 0),
+                    'last_modified': int(item.last_modified or 0),
+                }
+                for item in oss2.ObjectIteratorV2(self._bucket(), prefix=prefix)
+            ]
+        except ProviderConfigurationError:
+            raise
+        except Exception as exc:
+            raise ProviderUnavailableError('读取 OSS 临时文件列表失败', provider='aliyun-oss') from exc
+
+    def configure_expiration_lifecycle(self, *, retention_hours, rule_id='video-ai-temp-cleanup'):
+        oss2 = _load_oss2()
+        bucket = self._bucket()
+        days = max(1, math.ceil(int(retention_hours) / 24))
+        prefix = str(self.prefix or 'ai-temp/').strip('/') + '/'
+        try:
+            current_rules = list(bucket.get_bucket_lifecycle().rules)
+        except oss2.exceptions.NoSuchLifecycle:
+            current_rules = []
+        except Exception as exc:
+            raise ProviderUnavailableError('读取 OSS 生命周期规则失败', provider='aliyun-oss') from exc
+
+        kept_rules = [rule for rule in current_rules if rule.id != rule_id]
+        kept_rules.append(
+            oss2.models.LifecycleRule(
+                rule_id,
+                prefix,
+                status=oss2.models.LifecycleRule.ENABLED,
+                expiration=oss2.models.LifecycleExpiration(days=days),
+            )
+        )
+        try:
+            bucket.put_bucket_lifecycle(oss2.models.BucketLifecycle(kept_rules))
+        except Exception as exc:
+            raise ProviderUnavailableError('配置 OSS 生命周期规则失败', provider='aliyun-oss') from exc
+        return {'rule_id': rule_id, 'prefix': prefix, 'days': days}
+
+    def get_expiration_lifecycle(self, *, rule_id='video-ai-temp-cleanup'):
+        oss2 = _load_oss2()
+        try:
+            rules = self._bucket().get_bucket_lifecycle().rules
+        except oss2.exceptions.NoSuchLifecycle:
+            return None
+        except Exception as exc:
+            raise ProviderUnavailableError('读取 OSS 生命周期规则失败', provider='aliyun-oss') from exc
+        for rule in rules:
+            if rule.id == rule_id:
+                return {
+                    'rule_id': rule.id,
+                    'prefix': rule.prefix,
+                    'status': rule.status,
+                    'days': getattr(rule.expiration, 'days', None),
+                }
+        return None

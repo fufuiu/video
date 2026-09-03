@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 import os
 import shutil
+from uuid import uuid4
 from .models import Category, Tag, Video, VideoLike, Comment, VideoView, VideoCollection, VideoReport
 from .serializers import (
     CategorySerializer,
@@ -1359,8 +1360,9 @@ class CheckFileView(APIView):
         
         # 检查是否存在同MD5的视频
         video = Video.objects.filter(
-            hls_file__contains=file_md5,
-            user=request.user
+            Q(hls_file__contains=file_md5) | Q(video_file__contains=file_md5),
+            user=request.user,
+            deleted_at__isnull=True,
         ).first()
         
         if video:
@@ -1444,7 +1446,11 @@ class MergeChunksView(APIView):
             file_ext = '.mp4'  # 默认使用mp4扩展名
         
         # 合并后的文件路径
-        merged_filename = f"{file_md5}{file_ext}"
+        # Keep every logical upload on its own physical path. A previously
+        # soft-deleted upload may still own the original MD5-based file until
+        # recycle-bin cleanup, so reusing that path would let later cleanup
+        # delete the new video's media.
+        merged_filename = f"{file_md5}_{uuid4().hex[:8]}{file_ext}"
         merged_file_path = os.path.join(upload_dir, merged_filename)
         
         # 使用事务确保数据库和文件系统的一致性

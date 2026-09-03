@@ -43,6 +43,10 @@
         <span>保存</span>
       </button>
 
+      <span v-if="showUploadButton" class="next-step-hint">
+        保存仅保存草稿
+      </span>
+
       <button 
         v-if="showUploadButton"
         class="custom-btn primary"
@@ -50,7 +54,7 @@
         :disabled="isUploading"
       >
         <el-icon v-if="!isUploading"><Upload /></el-icon>
-        <span>{{ isUploading ? '上传中...' : '上传并处理' }}</span>
+        <span>{{ isUploading ? '处理中...' : '完成字幕并开始处理' }}</span>
       </button>
     </div>
 
@@ -349,6 +353,12 @@ const getStatusText = (status) => {
   gap: 12px;
 }
 
+.next-step-hint {
+  color: #aaa;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .custom-btn {
   display: flex;
   align-items: center;
@@ -443,87 +453,13 @@ const getStatusText = (status) => {
   background-color: rgba(0, 0, 0, 0.75) !important;
 }
 
-body .el-overlay {
-  background-color: rgba(0, 0, 0, 0.75) !important;
-}
-
-body .el-dialog {
-  background: #1a1a1a !important;
-  border: 1px solid #2a2a2a !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
-}
-
-.el-dialog__header {
-  border-bottom: 1px solid #2a2a2a !important;
-}
-
-.el-dialog__title {
-  color: #fff !important;
-}
-
-.el-dialog__headerbtn .el-dialog__close {
-  color: #aaa !important;
-}
-
-.el-dialog__headerbtn:hover .el-dialog__close {
-  color: #fff !important;
-}
-
-.el-dialog__body {
-  color: #fff !important;
-}
-
-.el-dialog__footer {
-  border-top: 1px solid #2a2a2a !important;
-}
-
-.el-overlay .el-dialog__title {
-  color: #fff !important;
-}
-
-.el-overlay .el-dialog__headerbtn .el-dialog__close {
-  color: #aaa !important;
-}
-
-.el-overlay .el-dialog__headerbtn:hover .el-dialog__close {
-  color: #fff !important;
-}
-
-.el-overlay .el-dialog__body {
-  color: #fff !important;
-}
-
-.el-overlay .el-dialog__footer {
-  border-top: 1px solid #2a2a2a !important;
-}
-
-.el-overlay .el-dialog .el-upload-dragger {
-  background-color: #2a2a2a !important;
-  border: 1px dashed #3a3a3a !important;
-}
-
-.el-overlay .el-dialog .el-upload-dragger:hover {
-  border-color: #4a4a4a !important;
-}
-
-.el-overlay .el-dialog .el-upload__text {
-  color: #ccc !important;
-}
-
-.el-overlay .el-dialog .el-upload__text em {
-  color: #66b1ff !important;
-}
-
-.el-overlay .el-dialog .el-upload-dragger .el-icon--upload {
-  color: #aaa !important;
-}
-
 .dark-dialog,
 .dark-dialog .el-dialog,
 .el-overlay-dialog.dark-dialog .el-dialog,
 .el-overlay-dialog .el-dialog.dark-dialog {
-  background: #1a1a1a;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  background: #1a1a1a !important;
+  border: 1px solid #2a2a2a !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
 }
 
 .dark-dialog .el-dialog__header {

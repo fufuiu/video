@@ -883,6 +883,7 @@ const submitVideo = async () => {
     return;
   }
   
+  let uploadCompleted = false;
   try {
     uploading.value = true;
     uploadStatus.value = '准备上传...';
@@ -915,6 +916,8 @@ const submitVideo = async () => {
     }
     
     const videoId = video.id;
+    uploadCompleted = true;
+    let subtitleInfoForNextStep = null;
     
     // 并行处理：字幕检测 + 封面上传
     const tasks = [];
@@ -958,8 +961,7 @@ const submitVideo = async () => {
                   ElMessage.info('字幕检测完成：未检测到字幕');
                 }
                 
-                // 处理字幕检测结果，显示引导弹窗
-                handleSubtitleDetectionResult(videoId, detectionResult.subtitle_info);
+                subtitleInfoForNextStep = detectionResult.subtitle_info;
                 break;
               } else if (statusResponse.state === 'FAILURE') {
                 // 检测失败
@@ -968,7 +970,7 @@ const submitVideo = async () => {
                 
                 // 如果允许继续，显示引导弹窗（作为无字幕处理）
                 if (statusResponse.allow_continue) {
-                  handleSubtitleDetectionResult(videoId, { has_subtitle: false });
+                  subtitleInfoForNextStep = { has_subtitle: false };
                 }
                 break;
               }
@@ -983,15 +985,13 @@ const submitVideo = async () => {
           
           if (attempt >= maxAttempts) {
             ElMessage.warning('字幕检测超时，但不影响视频上传');
-            // 超时也显示引导弹窗（作为无字幕处理）
-            handleSubtitleDetectionResult(videoId, { has_subtitle: false });
+            subtitleInfoForNextStep = { has_subtitle: false };
           }
           
         } catch (subtitleError) {
           console.error('字幕检测失败:', subtitleError);
           ElMessage.warning('字幕检测失败，但不影响视频上传');
-          // 失败也显示引导弹窗（作为无字幕处理）
-          handleSubtitleDetectionResult(videoId, { has_subtitle: false });
+          subtitleInfoForNextStep = { has_subtitle: false };
         } finally {
           subtitleDetecting.value = false;
         }
@@ -1051,23 +1051,23 @@ const submitVideo = async () => {
       });
     } catch (updateError) {
       console.error('更新视频信息失败:', updateError);
-      ElMessage.warning('视频已上传，但更新视频信息失败');
+      throw new Error('视频文件已上传，但作品信息保存失败，请到作品管理中重试');
     }
     
-    uploadStatus.value = '提交审核...';
-    try {
-      await publishVideo(videoId);
-    } catch (publishError) {
-      console.error('提交视频失败:', publishError);
+    // 字幕检测会把新视频置为 pending_subtitle_edit。此时视频还没有完成
+    // 转码，不能提前调用 publish；用户选择字幕处理方式后，转码任务会在
+    // 成功完成时自动把视频送入待审核状态。
+    uploadStatus.value = '等待选择字幕处理方式...';
+    ElMessage.success('视频和作品信息已保存，请选择字幕处理方式');
+
+    if (subtitleInfoForNextStep) {
+      handleSubtitleDetectionResult(videoId, subtitleInfoForNextStep);
     }
     
-    ElMessage.success('视频上传成功，状态为"未审核"，请等待管理员审核');
-    
-    // 注意：不在这里重置表单，等待字幕处理完成后再重置
-    // 字幕处理会在 handleSubtitleDetectionResult 中进行
+    // 不在这里重置表单，字幕选择和后续转码由引导流程接管。
   } catch (error) {
     console.error('视频上传失败:', error);
-    let errorMessage = '视频上传失败';
+    let errorMessage = uploadCompleted ? '投稿后续处理失败' : '视频上传失败';
     if (error.response?.data?.detail) {
       errorMessage += `: ${error.response.data.detail}`;
     } else if (error.message) {
@@ -1110,7 +1110,10 @@ const handleSubtitleDetectionResult = (videoId, subtitleInfo) => {
       }
     ).then(() => {
       // 用户选择生成字幕，跳转到字幕编辑页面
-      router.push(`/creator/subtitle?videoId=${videoId}`)
+      router.push({
+        path: '/creator/subtitle',
+        query: { videoId, mode: 'edit_before_transcode' }
+      })
     }).catch((action) => {
       if (action === 'cancel') {
         // 用户选择跳过，直接触发转码（不显示提示）
@@ -1138,7 +1141,10 @@ const handleSubtitleDetectionResult = (videoId, subtitleInfo) => {
       }
     ).then(() => {
       // 用户选择编辑字幕，跳转到字幕编辑页面
-      router.push(`/creator/subtitle?videoId=${videoId}`)
+      router.push({
+        path: '/creator/subtitle',
+        query: { videoId, mode: 'edit_before_transcode' }
+      })
     }).catch((action) => {
       if (action === 'cancel') {
         // 用户选择直接使用，触发转码

@@ -4,9 +4,27 @@
     <div class="subtitle-toolbar">
       <div class="toolbar-left">
         <span class="label">显示</span>
-        <div class="tab-btn active">双字幕</div>
-        <div class="tab-btn">主字幕</div>
-        <div class="tab-btn">副字幕</div>
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: displayMode === 'both' }"
+          :aria-pressed="displayMode === 'both'"
+          @click="setDisplayMode('both')"
+        >双字幕</button>
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: displayMode === 'main' }"
+          :aria-pressed="displayMode === 'main'"
+          @click="setDisplayMode('main')"
+        >主字幕</button>
+        <button
+          type="button"
+          class="tab-btn"
+          :class="{ active: displayMode === 'translation' }"
+          :aria-pressed="displayMode === 'translation'"
+          @click="setDisplayMode('translation')"
+        >副字幕</button>
         <button class="swap-btn" @click="handleSwapSubtitles" title="交换主副字幕">
           <el-icon><Sort /></el-icon>
         </button>
@@ -81,6 +99,7 @@
           <!-- 右侧：字幕内容区 -->
           <div class="item-content">
             <div
+              v-if="displayMode !== 'translation'"
               class="text-primary"
               contenteditable="true"
               spellcheck="false"
@@ -90,6 +109,7 @@
               @keydown.enter.prevent="$event.target.blur()"
             >{{ subtitle.text }}</div>
             <div
+              v-if="displayMode !== 'main'"
               class="text-secondary"
               contenteditable="true"
               spellcheck="false"
@@ -123,6 +143,11 @@ const props = defineProps({
   videoId: {
     type: [Number, String],
     required: true
+  },
+  displayMode: {
+    type: String,
+    default: 'both',
+    validator: (value) => ['both', 'main', 'translation'].includes(value)
   }
 })
 
@@ -132,11 +157,16 @@ const emit = defineEmits([
   'merge-subtitle',
   'delete-subtitle',
   'swap-subtitles',
-  'update-subtitles'
+  'update-subtitles',
+  'update:display-mode'
 ])
 
 const translateLang = ref('en')
 const isTranslating = ref(false)
+
+const setDisplayMode = (mode) => {
+  emit('update:display-mode', mode)
+}
 
 // 开始翻译
 const handleStartTranslate = async () => {
@@ -303,6 +333,11 @@ const handleSwapSubtitles = () => {
       &.active {
         background: #c72626;
         color: #fff;
+      }
+
+      &:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: 2px;
       }
 
       & + .tab-btn {

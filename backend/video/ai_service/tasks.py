@@ -17,6 +17,49 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _cleanup_temporary_object(storage, stored_object, *, task_name, video_id):
+    """Best-effort immediate cleanup for every terminal or retry path."""
+    if not storage or not stored_object:
+        return True
+    try:
+        storage.delete(stored_object.key)
+        return True
+    except Exception as cleanup_error:
+        logger.warning(
+            'AI temporary object cleanup failed task=%s video_id=%s exception_type=%s',
+            task_name,
+            video_id,
+            type(cleanup_error).__name__,
+        )
+        return False
+
+
+def _build_moderation_events(video_file_path, video_id, labels):
+    from ai_service.media import extract_moderation_frame
+    from ai_service.moderation import group_label_events
+
+    events = group_label_events(labels)
+    output_dir = Path(settings.MEDIA_ROOT) / 'ai_moderation' / 'flagged_frames' / str(video_id)
+    for index, event in enumerate(events, start=1):
+        timestamp_ms = int(round(float(event['timestamp']) * 1000))
+        filename = f'incident-{index:03d}-{timestamp_ms}.jpg'
+        try:
+            extract_moderation_frame(
+                video_file_path,
+                output_dir / filename,
+                event['timestamp'],
+            )
+            event['image_path'] = filename
+        except Exception as exc:
+            logger.warning(
+                'Moderation evidence frame extraction failed video_id=%s timestamp=%s exception_type=%s',
+                video_id,
+                event['timestamp'],
+                type(exc).__name__,
+            )
+    return events
+
+
 @shared_task(bind=True, max_retries=1, default_retry_delay=60)
 def generate_video_subtitles(self, video_id, language='auto'):
     """
@@ -40,7 +83,6 @@ def generate_video_subtitles(self, video_id, language='auto'):
     provider = None
     storage = None
     stored_object = None
-    provider_finished = False
     
     try:
         video = Video.objects.get(id=video_id)
@@ -80,7 +122,6 @@ def generate_video_subtitles(self, video_id, language='auto'):
         while True:
             result = provider.result(job.job_id)
             if not isinstance(result, ProviderJob):
-                provider_finished = True
                 break
             if time.monotonic() >= deadline:
                 raise ProviderUnavailableError('语音识别任务等待超时', provider=job.provider)
@@ -159,11 +200,12 @@ def generate_video_subtitles(self, video_id, language='auto'):
                 logger.info(f"[Task {task_id}] 已删除临时音频文件")
             except Exception:
                 pass
-        if storage and stored_object and provider_finished:
-            try:
-                storage.delete(stored_object.key)
-            except Exception:
-                logger.warning('[Task %s] OSS 临时文件即时清理失败，将由生命周期规则清理', task_id)
+        _cleanup_temporary_object(
+            storage,
+            stored_object,
+            task_name='generate_video_subtitles',
+            video_id=video_id,
+        )
         if provider:
             close = getattr(provider, 'close', None)
             if callable(close):
@@ -276,7 +318,8 @@ def detect_video_subtitle(self, video_id):
                 logger.info(f"[Task {task_id}] 已触发转码任务")
             except Exception as e:
                 logger.error(f"[Task {task_id}] 触发转码任务失败: {e}")
-                video.status = 'uploaded'
+                # 回到允许用户重新触发转码的有效状态，避免写入模型未定义的 uploaded。
+                video.status = 'pending_subtitle_edit'
                 video.save(update_fields=['status'])
                 raise
         else:
@@ -549,18 +592,16 @@ def _legacy_local_moderate_video(self, video_id, threshold_level='medium', thres
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=120)
-def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6, fps=1):
+def moderate_video_task(self, video_id, *_legacy_local_args):
     """Moderate a video through the configured cloud provider and temporary storage."""
     from ai_service.providers import ProviderError, ProviderJob, ProviderUnavailableError, get_provider
     from ai_service.storage import get_temporary_storage
-    from ai_service.providers import ProviderError
     from videos.models import Video
 
     moderation = None
     provider = None
     storage = None
     stored = None
-    provider_finished = False
 
     try:
         report_task_progress(self, current=0, message='开始云端内容审核', target_video_id=video_id)
@@ -576,7 +617,21 @@ def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6,
 
         moderation, _created = ModerationResult.objects.update_or_create(
             video_id=video_id,
-            defaults={'status': 'processing', 'error_message': ''},
+            defaults={
+                'status': 'processing',
+                'result': None,
+                'confidence': 0.0,
+                'neutral_score': 0.0,
+                'low_score': 0.0,
+                'medium_score': 0.0,
+                'high_score': 0.0,
+                'flagged_frames': [],
+                'error_message': '',
+                'human_decision': 'pending',
+                'human_reviewer': None,
+                'human_reviewed_at': None,
+                'human_review_remark': '',
+            },
         )
         storage = get_temporary_storage()
         stored = storage.upload_file(video_file_path, purpose='moderation/video')
@@ -600,7 +655,6 @@ def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6,
         while True:
             cloud_result = provider.result(job.job_id)
             if not isinstance(cloud_result, ProviderJob):
-                provider_finished = True
                 break
             if time.monotonic() >= deadline:
                 raise ProviderUnavailableError('阿里云视频审核等待超时', provider=job.provider)
@@ -616,23 +670,23 @@ def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6,
         result_mapping = {'safe': 'safe', 'review': 'uncertain', 'reject': 'unsafe'}
         moderation_result = result_mapping.get(cloud_result.decision, 'uncertain')
         confidence = max(0.0, min(1.0, float(cloud_result.confidence or 0.0)))
-        flagged_frames = [
-            {
-                'timestamp': item.get('offset', 0),
-                'label': item.get('name', ''),
-                'risk_level': item.get('risk_level', ''),
-                'confidence': item.get('confidence', 0),
-            }
-            for item in cloud_result.labels
-        ]
+        flagged_frames = _build_moderation_events(
+            video_file_path,
+            video_id,
+            cloud_result.labels,
+        )
         moderation.status = 'completed'
         moderation.result = moderation_result
         moderation.confidence = confidence
-        moderation.neutral_score = confidence if moderation_result == 'safe' else 0.0
-        moderation.low_score = confidence if moderation_result != 'safe' else 0.0
-        moderation.medium_score = confidence if moderation_result in {'uncertain', 'unsafe'} else 0.0
-        moderation.high_score = confidence if moderation_result == 'unsafe' else 0.0
+        # Cloud labels are not cumulative NSFW probabilities. Keep legacy scores empty.
+        moderation.neutral_score = 1.0 if moderation_result == 'safe' else 0.0
+        moderation.low_score = 0.0
+        moderation.medium_score = 0.0
+        moderation.high_score = 0.0
         moderation.flagged_frames = flagged_frames
+        review_history = list(
+            (moderation.details or {}).get('human_review_history') or []
+        )
         moderation.details = {
             'provider': cloud_result.provider,
             'provider_job_id': job.job_id,
@@ -640,13 +694,12 @@ def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6,
             'decision': cloud_result.decision,
             'labels': cloud_result.labels,
             'input_bytes': stored.size,
-            'legacy_request': {
-                'threshold_level': threshold_level,
-                'threshold': threshold,
-                'fps': fps,
-            },
+            'strategy': 'managed_in_aliyun_console',
+            'incident_count': len(flagged_frames),
             'progress': 100,
         }
+        if review_history:
+            moderation.details['human_review_history'] = review_history
         moderation.error_message = ''
         moderation.save()
         report_task_progress(
@@ -694,14 +747,12 @@ def moderate_video_task(self, video_id, threshold_level='medium', threshold=0.6,
             raise self.retry(exc=exc)
         return {'video_id': video_id, 'status': 'error', 'reason': 'AI_PROVIDER_UNAVAILABLE'}
     finally:
-        if provider_finished and storage and stored:
-            try:
-                storage.delete(stored.key)
-            except Exception as cleanup_error:
-                logger.warning(
-                    'Temporary moderation object cleanup failed exception_type=%s',
-                    type(cleanup_error).__name__,
-                )
+        _cleanup_temporary_object(
+            storage,
+            stored,
+            task_name='moderate_video_task',
+            video_id=video_id,
+        )
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=120)
@@ -774,15 +825,13 @@ def summarize_video_task(self, video_id):
 
 
 @shared_task
-def batch_moderate_videos(video_ids, threshold_level='medium', threshold=0.6, fps=1):
+def batch_moderate_videos(video_ids, *_legacy_local_args):
     """
     批量审核视频
     
     Args:
         video_ids: 视频 ID 列表
-        threshold_level: 检测级别
-        threshold: 置信度阈值
-        fps: 每秒抽取帧数
+        云端审核策略由阿里云控制台统一管理。
     """
     results = []
     for video_id in video_ids:
@@ -790,11 +839,8 @@ def batch_moderate_videos(video_ids, threshold_level='medium', threshold=0.6, fp
             result = enqueue_task(
                 moderate_video_task,
                 video_id,
-                threshold_level,
-                threshold,
-                fps,
                 target_video_id=video_id,
-                dedupe_key=f"video:{video_id}:moderation:{threshold_level}:{threshold}:{fps}",
+                dedupe_key=f'video:{video_id}:moderation',
             )
             results.append({'video_id': video_id, 'task_id': result.id, 'status': 'submitted'})
         except Exception as e:

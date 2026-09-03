@@ -3,6 +3,27 @@
     <!-- 视频播放器 -->
     <div class="video-player" @click="handleVideoAreaClick">
       <div ref="videoContainer" class="video-container"></div>
+      <div
+        v-if="hasVideo && currentPreviewSubtitle"
+        class="subtitle-preview-overlay"
+        :style="previewOverlayStyle"
+        aria-hidden="true"
+      >
+        <div
+          v-if="subtitleDisplayMode !== 'translation' && currentPreviewSubtitle.text"
+          class="subtitle-preview-line subtitle-preview-main"
+          :style="previewMainStyle"
+        >
+          {{ currentPreviewSubtitle.text }}
+        </div>
+        <div
+          v-if="subtitleDisplayMode !== 'main' && currentPreviewSubtitle.translation"
+          class="subtitle-preview-line subtitle-preview-translation"
+          :style="previewTranslationStyle"
+        >
+          {{ currentPreviewSubtitle.translation }}
+        </div>
+      </div>
       <div v-if="!hasVideo" class="video-empty-overlay">
         <div class="empty-card">
           <div class="empty-icon">
@@ -275,6 +296,11 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  subtitleDisplayMode: {
+    type: String,
+    default: 'both',
+    validator: (value) => ['both', 'main', 'translation'].includes(value)
+  },
   activeTab: {
     type: String,
     default: 'subtitle'
@@ -290,6 +316,7 @@ const emit = defineEmits(['update:activeTab', 'toggle-panel', 'time-update', 'pl
 const videoContainer = ref(null)
 const artplayer = ref(null)
 const subtitleBlobUrl = ref('')
+const playerCurrentTime = ref(0)
 const importFileInput = ref(null)
 const videoFileInput = ref(null)
 const timeUpdateRafId = ref(null)
@@ -330,6 +357,39 @@ const hasVideo = computed(() => {
   const url = props.videoUrl
   return !!url && url.trim() !== ''
 })
+
+const currentPreviewSubtitle = computed(() => {
+  const time = Number(playerCurrentTime.value) || 0
+  return (props.subtitles || []).find((subtitle) => {
+    const start = Number(subtitle?.startTime)
+    const end = Number(subtitle?.endTime)
+    return Number.isFinite(start) && Number.isFinite(end) && time >= start && time < end
+  }) || null
+})
+
+const previewOverlayStyle = computed(() => ({
+  bottom: `${48 + Math.max(0, Number(bottomDistance.value) || 0)}px`
+}))
+
+const previewMainStyle = computed(() => ({
+  color: mainColor.value,
+  fontSize: `${Math.max(12, Number(fontSize.value) || 24)}px`,
+  fontFamily: `"${fontFamily.value}", "Microsoft YaHei", sans-serif`,
+  fontWeight: isBold.value ? '700' : '400',
+  fontStyle: isItalic.value ? 'italic' : 'normal',
+  letterSpacing: `${Math.max(0, Number(letterSpacing.value) || 0)}px`,
+  textShadow: buildTextShadowForStyle(mainBorderColor.value)
+}))
+
+const previewTranslationStyle = computed(() => ({
+  color: subColor.value,
+  fontSize: `${Math.max(12, (Number(fontSize.value) || 24) * 0.8)}px`,
+  fontFamily: `"${fontFamily.value}", "Microsoft YaHei", sans-serif`,
+  fontWeight: isBold.value ? '700' : '400',
+  fontStyle: isItalic.value ? 'italic' : 'normal',
+  letterSpacing: `${Math.max(0, Number(letterSpacing.value) || 0)}px`,
+  textShadow: buildTextShadowForStyle(subBorderColor.value)
+}))
 
 const handleVideoAreaClick = () => {
   if (hasVideo.value) return
@@ -505,8 +565,9 @@ const applySubtitleStylesDirectly = () => {
   const playerContainer = artplayer.value.template.$player
   const containerWidth = playerContainer?.offsetWidth || 1920
   
-  // 基准宽度为 1920px，根据实际容器宽度计算缩放比例
-  const scale = containerWidth / 1920
+  // 字号使用的是界面 CSS 像素，不能按 1920 视频分辨率线性缩小。
+  // 仅在很窄的容器中做有限缩放，避免常规编辑窗口中的字幕小到不可见。
+  const scale = Math.max(0.75, Math.min(1, containerWidth / 640))
   
   // 计算实际字体大小
   const actualFontSize = fontSize.value * scale
@@ -729,6 +790,7 @@ const initArtplayer = () => {
     })
 
     artplayer.value.on('ready', () => {
+      playerCurrentTime.value = Number(artplayer.value.currentTime) || 0
       emit('player-ready', artplayer.value)
       applySubtitlesToPlayer(props.subtitles)
     })
@@ -787,7 +849,8 @@ const initArtplayer = () => {
       const now = performance.now()
       if (now - lastTimeEmitTs.value >= timeUpdateIntervalMs.value) {
         lastTimeEmitTs.value = now
-        emit('time-update', artplayer.value.currentTime)
+        playerCurrentTime.value = Number(artplayer.value.currentTime) || 0
+        emit('time-update', playerCurrentTime.value)
       }
       timeUpdateRafId.value = requestAnimationFrame(tickTimeUpdate)
     }
@@ -807,9 +870,14 @@ const initArtplayer = () => {
     artplayer.value.on('video:play', () => startTimeUpdateTicker())
     artplayer.value.on('video:pause', () => stopTimeUpdateTicker())
     artplayer.value.on('video:ended', () => stopTimeUpdateTicker())
-    artplayer.value.on('video:seeking', () => emit('time-update', artplayer.value.currentTime))
-    artplayer.value.on('video:seeked', () => emit('time-update', artplayer.value.currentTime))
-    artplayer.value.on('video:timeupdate', () => emit('time-update', artplayer.value.currentTime))
+    const syncPlayerTime = () => {
+      playerCurrentTime.value = Number(artplayer.value?.currentTime) || 0
+      emit('time-update', playerCurrentTime.value)
+    }
+
+    artplayer.value.on('video:seeking', syncPlayerTime)
+    artplayer.value.on('video:seeked', syncPlayerTime)
+    artplayer.value.on('video:timeupdate', syncPlayerTime)
   } catch (error) {
     ElMessage.error('初始化播放器失败: ' + (error?.message || '未知错误'))
   }
@@ -893,6 +961,32 @@ defineExpose({
 .video-container {
   width: 100%;
   height: 100%;
+}
+
+// 工坊使用下方的 Vue 实时预览层。隐藏 Artplayer 自带字幕层，避免同一条
+// 字幕在编辑画面中叠加显示两次；字幕数据和最终转码输出不受影响。
+.video-container :deep(.art-subtitle) {
+  display: none !important;
+}
+
+.subtitle-preview-overlay {
+  position: absolute;
+  z-index: 55;
+  left: 5%;
+  right: 5%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  text-align: center;
+}
+
+.subtitle-preview-line {
+  max-width: 100%;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .video-empty-overlay {

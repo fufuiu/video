@@ -3,11 +3,13 @@ import json
 import tempfile
 from io import StringIO
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from django.test import SimpleTestCase, override_settings
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.utils import timezone
 
 from ai_service.providers import ProviderUnavailableError, get_provider
 from ai_service.providers.aliyun_asr import AliyunSpeechToTextProvider, parse_transcription_payload
@@ -18,9 +20,61 @@ from ai_service.providers.aliyun_moderation import (
 )
 from ai_service.providers.base import ProviderJob
 from ai_service.providers.base import ProviderConfigurationError
+from ai_service.moderation import group_label_events
 from ai_service.services.deepseek_service import DeepSeekService
+from ai_service.services.ocr_service import OCRService
 from ai_service.storage import get_temporary_storage
-from ai_service.storage.aliyun_oss import build_object_key
+from ai_service.storage.aliyun_oss import AliyunOSSTemporaryStorage, build_object_key
+from ai_service.tasks import _cleanup_temporary_object
+from ai_service.models import ModerationResult
+from rest_framework.test import APIClient
+from videos.models import Video
+
+
+class SubtitleSoftDeleteTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username='subtitle-user',
+            email='subtitle@example.com',
+            password='testpass123',
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_subtitle_data_does_not_expose_soft_deleted_video(self):
+        video = Video.objects.create(
+            title='deleted subtitle video',
+            user=self.user,
+            video_file='videos/uploads/deleted.mp4',
+            subtitles_draft=[{'startTime': 0, 'endTime': 1, 'text': 'old'}],
+        )
+        video.soft_delete()
+
+        response = self.client.get(f'/api/ai/subtitle/{video.id}/data/')
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_subtitle_data_persists_and_returns_editor_style(self):
+        video = Video.objects.create(
+            title='subtitle style video',
+            user=self.user,
+            video_file='videos/uploads/style.mp4',
+        )
+        subtitles = [{'startTime': 0, 'endTime': 1, 'text': 'hello'}]
+        editor_style = {'mainColor': '#ffffff', 'fontSize': 32}
+
+        update_response = self.client.put(
+            f'/api/ai/subtitle/{video.id}/data/',
+            {'subtitles': subtitles, 'style': editor_style},
+            format='json',
+        )
+        get_response = self.client.get(f'/api/ai/subtitle/{video.id}/data/')
+
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(update_response.json()['style'], editor_style)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.json()['style'], editor_style)
 
 
 class ProviderRegistryTests(SimpleTestCase):
@@ -206,7 +260,11 @@ class ProviderRegistryTests(SimpleTestCase):
                             'RiskLevel': 'high',
                             'Results': [{
                                 'Service': 'baselineCheck',
-                                'Result': [{'Label': 'violent_explosion', 'Confidence': 74.1}],
+                                'Result': [{
+                                    'Label': 'violent_explosion',
+                                    'Description': '疑似出现爆炸或暴力内容',
+                                    'Confidence': 74.1,
+                                }],
                             }],
                         }],
                     },
@@ -217,7 +275,81 @@ class ProviderRegistryTests(SimpleTestCase):
         self.assertEqual(result.decision, 'reject')
         self.assertEqual(result.confidence, 0.741)
         self.assertEqual(result.labels[0]['offset'], 12.0)
+        self.assertEqual(result.labels[0]['description'], '疑似出现爆炸或暴力内容')
         self.assertEqual(result.request_id, 'req-green')
+
+    def test_adjacent_provider_frames_are_grouped_into_one_event(self):
+        events = group_label_events([
+            {
+                'name': 'political_politicalFigure_name_tii',
+                'confidence': 0.8912,
+                'risk_level': 'medium',
+                'offset': 39.5,
+                'service': 'liveStreamCheck',
+            },
+            {
+                'name': 'political_politicalFigure_name_tii',
+                'confidence': 0.8914,
+                'risk_level': 'medium',
+                'offset': 40.5,
+                'service': 'liveStreamCheck',
+            },
+            {
+                'name': 'political_politicalFigure_name_tii',
+                'confidence': 0.8913,
+                'risk_level': 'medium',
+                'offset': 42.5,
+                'service': 'liveStreamCheck',
+            },
+        ])
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['start_time'], 39.5)
+        self.assertEqual(events[0]['end_time'], 42.5)
+        self.assertEqual(events[0]['source_frame_count'], 3)
+        self.assertEqual(events[0]['confidence'], 0.8914)
+        self.assertIn('政治人物姓名', events[0]['label_text'])
+
+    def test_temporary_object_cleanup_runs_without_provider_completion_flag(self):
+        storage = MagicMock()
+        stored = MagicMock(key='ai-temp/moderation-video/object.mp4')
+
+        cleaned = _cleanup_temporary_object(
+            storage,
+            stored,
+            task_name='moderate_video_task',
+            video_id=7,
+        )
+
+        self.assertTrue(cleaned)
+        storage.delete.assert_called_once_with(stored.key)
+
+    @override_settings(
+        ALIBABA_CLOUD_ACCESS_KEY_ID='test-id',
+        ALIBABA_CLOUD_ACCESS_KEY_SECRET='test-secret',
+        ALIYUN_OSS_ENDPOINT='oss-cn-test.aliyuncs.com',
+        ALIYUN_OSS_BUCKET='test-bucket',
+        ALIYUN_OSS_PREFIX='ai-temp/',
+    )
+    def test_lifecycle_configuration_preserves_unrelated_rules(self):
+        import oss2
+
+        storage = AliyunOSSTemporaryStorage()
+        bucket = MagicMock()
+        existing = oss2.models.LifecycleRule(
+            'keep-me',
+            'archive/',
+            expiration=oss2.models.LifecycleExpiration(days=30),
+        )
+        bucket.get_bucket_lifecycle.return_value = MagicMock(rules=[existing])
+
+        with patch.object(storage, '_bucket', return_value=bucket):
+            configured = storage.configure_expiration_lifecycle(retention_hours=24)
+
+        lifecycle = bucket.put_bucket_lifecycle.call_args.args[0]
+        self.assertEqual([rule.id for rule in lifecycle.rules], ['keep-me', 'video-ai-temp-cleanup'])
+        self.assertEqual(configured['prefix'], 'ai-temp/')
+        self.assertEqual(configured['days'], 1)
 
     def test_aliyun_moderation_processing_response_remains_a_job(self):
         result = parse_moderation_response(
@@ -299,4 +431,218 @@ class ProviderRegistryTests(SimpleTestCase):
 
         self.assertEqual(storage.__class__.__name__, 'AliyunOSSTemporaryStorage')
 
-# Create your tests here.
+
+class OCRServiceTests(SimpleTestCase):
+    @override_settings(AI_OCR_PROVIDER='disabled')
+    def test_disabled_ocr_skips_hard_subtitle_detection_cleanly(self):
+        service = OCRService()
+        soft_result = {'has_subtitle': False, 'tracks': [], 'language': ''}
+
+        with (
+            patch.object(service, '_detect_soft_subtitle', return_value=soft_result),
+            patch.object(service, '_detect_hard_subtitle') as detect_hard,
+        ):
+            result = service.detect_subtitle('video.mp4')
+
+        detect_hard.assert_not_called()
+        self.assertFalse(result['has_subtitle'])
+        self.assertEqual(result['subtitle_type'], 'none')
+        self.assertTrue(result['details']['skipped'])
+        self.assertEqual(result['details']['reason'], 'ocr_disabled')
+
+    @override_settings(AI_OCR_PROVIDER='disabled')
+    def test_explicit_provider_can_still_be_used_in_isolated_tests(self):
+        provider = MagicMock()
+        service = OCRService(provider=provider)
+        hard_result = {
+            'has_subtitle': True,
+            'detected_frames': 2,
+            'total_frames': 4,
+            'language': 'zh',
+            'provider': 'test',
+        }
+
+        with (
+            patch.object(
+                service,
+                '_detect_soft_subtitle',
+                return_value={'has_subtitle': False, 'tracks': [], 'language': ''},
+            ),
+            patch.object(service, '_detect_hard_subtitle', return_value=hard_result) as detect_hard,
+        ):
+            result = service.detect_subtitle('video.mp4')
+
+        detect_hard.assert_called_once_with('video.mp4')
+        self.assertTrue(result['has_subtitle'])
+        self.assertEqual(result['subtitle_type'], 'hard')
+
+
+class ModerationReviewAPITests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            username='moderation-admin',
+            password='test-password',
+            is_staff=True,
+        )
+        self.owner = get_user_model().objects.create_user(
+            username='video-owner',
+            password='test-password',
+        )
+        self.video = Video.objects.create(
+            title='教程视频',
+            user=self.owner,
+            video_file='videos/uploads/tutorial.mp4',
+            status='pending',
+            is_published=False,
+        )
+        self.moderation = ModerationResult.objects.create(
+            video=self.video,
+            status='completed',
+            result='uncertain',
+            confidence=0.8914,
+            flagged_frames=[{
+                'label': 'political_politicalFigure_name_tii',
+                'label_text': '疑似出现政治人物姓名',
+                'start_time': 39.5,
+                'end_time': 42.5,
+                'confidence': 0.8914,
+            }],
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    @patch('ai_service.views.enqueue_task')
+    def test_submit_moderation_immediately_persists_processing_state(self, enqueue):
+        enqueue.return_value = MagicMock(id='task-moderation-now')
+
+        response = self.client.post(
+            '/api/ai/moderation/moderate/',
+            {'video_id': self.video.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['status'], 'processing')
+        self.assertEqual(response.data['task_id'], 'task-moderation-now')
+        self.moderation.refresh_from_db()
+        self.assertEqual(self.moderation.status, 'processing')
+        self.assertIsNone(self.moderation.result)
+
+    @patch('ai_service.views.enqueue_task')
+    def test_submit_moderation_exposes_dispatch_failure_in_list_state(self, enqueue):
+        enqueue.side_effect = RuntimeError('queue unavailable')
+
+        response = self.client.post(
+            '/api/ai/moderation/moderate/',
+            {'video_id': self.video.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.moderation.refresh_from_db()
+        self.assertEqual(self.moderation.status, 'failed')
+        self.assertEqual(
+            self.moderation.error_message,
+            '审核任务提交失败，请稍后重试',
+        )
+
+    def test_admin_can_confirm_false_positive_with_audit_record(self):
+        response = self.client.post(
+            '/api/ai/moderation/submit-review/',
+            {
+                'moderation_id': self.moderation.id,
+                'action': 'false_positive',
+                'remark': '教程软件界面误识别',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.moderation.refresh_from_db()
+        self.video.refresh_from_db()
+        self.assertEqual(self.moderation.human_decision, 'false_positive')
+        self.assertEqual(self.moderation.human_reviewer, self.admin)
+        self.assertEqual(
+            self.moderation.details['human_review_history'][-1]['action'],
+            'false_positive',
+        )
+        self.assertEqual(self.video.status, 'approved')
+        self.assertTrue(self.video.is_published)
+
+    def test_admin_can_confirm_violation(self):
+        response = self.client.post(
+            '/api/ai/moderation/submit-review/',
+            {
+                'moderation_id': self.moderation.id,
+                'action': 'confirmed_violation',
+                'remark': '人工确认违规',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.moderation.refresh_from_db()
+        self.video.refresh_from_db()
+        self.assertEqual(self.moderation.human_decision, 'confirmed_violation')
+        self.assertEqual(self.video.status, 'rejected')
+        self.assertFalse(self.video.is_published)
+
+    def test_admin_can_confirm_safe_result(self):
+        self.moderation.result = 'safe'
+        self.moderation.confidence = 1.0
+        self.moderation.flagged_frames = []
+        self.moderation.save(update_fields=['result', 'confidence', 'flagged_frames'])
+
+        response = self.client.post(
+            '/api/ai/moderation/submit-review/',
+            {
+                'moderation_id': self.moderation.id,
+                'action': 'confirmed_safe',
+                'remark': '人工确认安全',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.moderation.refresh_from_db()
+        self.assertEqual(self.moderation.human_decision, 'confirmed_safe')
+
+    @patch('ai_service.views.enqueue_task')
+    def test_re_moderation_clears_human_decision_and_unpublishes_video(self, enqueue):
+        enqueue.return_value = MagicMock(id='task-review-again')
+        self.moderation.human_decision = 'false_positive'
+        self.moderation.human_reviewer = self.admin
+        self.moderation.human_reviewed_at = timezone.now()
+        self.moderation.save()
+        self.video.status = 'approved'
+        self.video.is_published = True
+        self.video.save(update_fields=['status', 'is_published'])
+
+        response = self.client.post(
+            '/api/ai/moderation/re-moderate/',
+            {'moderation_id': self.moderation.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.moderation.refresh_from_db()
+        self.video.refresh_from_db()
+        self.assertEqual(self.moderation.human_decision, 'pending')
+        self.assertEqual(self.video.status, 'pending')
+        self.assertFalse(self.video.is_published)
+
+    def test_detail_exposes_effective_result_and_label_confidence(self):
+        response = self.client.get(f'/api/ai/moderation/{self.moderation.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['effective_result'], 'uncertain')
+        self.assertEqual(response.data['label_confidence'], 0.8914)
+        self.assertTrue(
+            response.data['video']['playback_url'].endswith(
+                '/media/videos/uploads/tutorial.mp4'
+            )
+        )
+        self.assertEqual(
+            response.data['flagged_frames'][0]['label_text'],
+            '疑似出现政治人物姓名',
+        )

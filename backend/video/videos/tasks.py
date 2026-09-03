@@ -11,8 +11,19 @@ from django.core.cache import cache
 from core.task_lifecycle import report_task_progress
 import logging
 import hashlib
+import re
 
 logger = logging.getLogger(__name__)
+
+
+def _build_file_identifier(video_file_path):
+    """Return a stable, collision-safe directory name for generated media."""
+    file_base_name = Path(video_file_path).stem
+    if re.fullmatch(r'[0-9a-f]{32}(?:_[0-9a-f]{8})?', file_base_name):
+        return file_base_name
+    if len(file_base_name) < 32:
+        return file_base_name
+    return file_base_name[:32]
 
 
 def send_video_notification(user, video, notification_type, title, content):
@@ -145,13 +156,7 @@ def process_video(self, video_id):
             raise FileNotFoundError(f"视频文件不存在: {video_file_path}")
         
         # 提取文件标识符
-        file_path, file_name = os.path.split(video_file_path)
-        file_base_name, file_ext = os.path.splitext(file_name)
-        
-        if len(file_base_name) < 32:
-            file_identifier = file_base_name
-        else:
-            file_identifier = file_base_name[:32]
+        file_identifier = _build_file_identifier(video_file_path)
         
         # 创建 HLS 输出目录
         hls_dir = os.path.join(settings.MEDIA_ROOT, 'videos', 'hls', file_identifier)

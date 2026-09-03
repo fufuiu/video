@@ -1,11 +1,87 @@
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.contrib.auth import get_user_model
 from unittest.mock import Mock, patch, MagicMock
 from rest_framework.test import APIClient
 from .models import Video
+from .tasks import _build_file_identifier
 import os
 
 User = get_user_model()
+
+
+class UploadDeduplicationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='upload-user',
+            email='upload@example.com',
+            password='testpass123',
+        )
+        self.client.force_authenticate(user=self.user)
+        self.file_md5 = 'a' * 32
+
+    def test_check_file_reuses_active_video(self):
+        video = Video.objects.create(
+            title='active',
+            user=self.user,
+            video_file='videos/uploads/active.mp4',
+            hls_file=f'videos/hls/{self.file_md5}/master.m3u8',
+        )
+
+        response = self.client.post('/api/videos/upload/check/', {
+            'file_name': 'sample.mp4',
+            'file_md5': self.file_md5,
+            'file_size': 1024,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['exists'])
+        self.assertEqual(response.json()['video']['id'], video.id)
+
+    def test_check_file_reuses_active_video_before_transcoding(self):
+        video = Video.objects.create(
+            title='waiting for subtitles',
+            user=self.user,
+            video_file=f'videos/uploads/{self.file_md5}_1234abcd.mp4',
+            status='pending_subtitle_edit',
+        )
+
+        response = self.client.post('/api/videos/upload/check/', {
+            'file_name': 'sample.mp4',
+            'file_md5': self.file_md5,
+            'file_size': 1024,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['exists'])
+        self.assertEqual(response.json()['video']['id'], video.id)
+
+    def test_check_file_does_not_reuse_soft_deleted_video(self):
+        video = Video.objects.create(
+            title='deleted',
+            user=self.user,
+            video_file='videos/uploads/deleted.mp4',
+            hls_file=f'videos/hls/{self.file_md5}/master.m3u8',
+        )
+        video.soft_delete()
+
+        response = self.client.post('/api/videos/upload/check/', {
+            'file_name': 'sample.mp4',
+            'file_md5': self.file_md5,
+            'file_size': 1024,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['exists'])
+
+
+class VideoFileIdentifierTests(SimpleTestCase):
+    def test_identifier_preserves_unique_suffix_for_reuploaded_md5(self):
+        identifier = _build_file_identifier(
+            r'C:\media\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_1234abcd.mp4'
+        )
+
+        self.assertEqual(identifier, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_1234abcd')
 
 
 # 注意：字幕检测相关的测试已移至 ai_service/tests.py
@@ -43,27 +119,30 @@ class TriggerTranscodeAPITest(TestCase):
             status='pending_subtitle_edit'
         )
     
-    @patch('videos.views.process_video')
-    def test_trigger_transcode_success(self, mock_process_video):
+    @patch('videos.views.enqueue_task')
+    def test_trigger_transcode_success(self, mock_enqueue_task):
         """测试：成功触发转码"""
+        mock_enqueue_task.return_value = MagicMock(id='task-transcode-1')
         # 使用 force_authenticate 进行认证
         self.client.force_authenticate(user=self.user)
         
         # 调用API
-        response = self.client.post(f'/api/videos/{self.video.id}/trigger-transcode/')
+        response = self.client.post(f'/api/videos/videos/{self.video.id}/trigger-transcode/')
         
         # 验证响应
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['message'], '转码已启动')
         self.assertEqual(response.json()['video_id'], self.video.id)
-        self.assertEqual(response.json()['status'], 'transcoding')
+        self.assertEqual(response.json()['status'], 'submitted')
+        self.assertEqual(response.json()['task_id'], 'task-transcode-1')
         
         # 验证视频状态已更新
         self.video.refresh_from_db()
         self.assertEqual(self.video.status, 'transcoding')
         
         # 验证转码任务被触发
-        mock_process_video.delay.assert_called_once_with(self.video.id)
+        mock_enqueue_task.assert_called_once()
+        self.assertEqual(mock_enqueue_task.call_args.args[1], self.video.id)
     
     def test_trigger_transcode_wrong_status(self):
         """测试：视频状态不正确时返回错误"""
@@ -75,11 +154,12 @@ class TriggerTranscodeAPITest(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # 调用API
-        response = self.client.post(f'/api/videos/{self.video.id}/trigger-transcode/')
+        response = self.client.post(f'/api/videos/videos/{self.video.id}/trigger-transcode/')
         
         # 验证响应
         self.assertEqual(response.status_code, 400)
-        self.assertIn('无法触发转码', response.json()['error'])
+        self.assertEqual(response.json()['error']['code'], 'VALIDATION_ERROR')
+        self.assertIn('无法触发转码', response.json()['error']['message'])
     
     def test_trigger_transcode_no_permission(self):
         """测试：非视频所有者无权触发转码"""
@@ -87,16 +167,16 @@ class TriggerTranscodeAPITest(TestCase):
         self.client.force_authenticate(user=self.other_user)
         
         # 调用API
-        response = self.client.post(f'/api/videos/{self.video.id}/trigger-transcode/')
+        response = self.client.post(f'/api/videos/videos/{self.video.id}/trigger-transcode/')
         
         # 验证响应
         self.assertEqual(response.status_code, 404)
-        self.assertIn('视频不存在或无权限', response.json()['error'])
+        self.assertEqual(response.json()['error']['code'], 'NOT_FOUND')
     
     def test_trigger_transcode_not_authenticated(self):
         """测试：未登录用户无法触发转码"""
         # 不进行认证，直接调用API
-        response = self.client.post(f'/api/videos/{self.video.id}/trigger-transcode/')
+        response = self.client.post(f'/api/videos/videos/{self.video.id}/trigger-transcode/')
         
         # 验证响应（应该返回401或403）
         self.assertIn(response.status_code, [401, 403])
@@ -107,8 +187,8 @@ class TriggerTranscodeAPITest(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # 调用API（使用不存在的视频ID）
-        response = self.client.post('/api/videos/99999/trigger-transcode/')
+        response = self.client.post('/api/videos/videos/99999/trigger-transcode/')
         
         # 验证响应
         self.assertEqual(response.status_code, 404)
-        self.assertIn('视频不存在或无权限', response.json()['error'])
+        self.assertEqual(response.json()['error']['code'], 'NOT_FOUND')

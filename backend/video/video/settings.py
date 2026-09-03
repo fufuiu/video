@@ -509,6 +509,13 @@ LOGGING = {
             'level': 'WARNING',
             'propagate': False,
         },
+        # OSS INFO logs contain bucket names and object keys. Keep those details
+        # out of shared console and application logs.
+        'oss2': {
+            'handlers': ['console', 'django_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
     },
 }
 
@@ -540,6 +547,9 @@ DASHSCOPE_ASR_MODEL = os.environ.get('DASHSCOPE_ASR_MODEL', 'fun-asr')
 DASHSCOPE_POLL_INTERVAL_SECONDS = _env_int('DASHSCOPE_POLL_INTERVAL_SECONDS', 10)
 DASHSCOPE_POLL_TIMEOUT_SECONDS = _env_int('DASHSCOPE_POLL_TIMEOUT_SECONDS', 1500)
 AI_AUDIO_EXTRACT_TIMEOUT_SECONDS = _env_int('AI_AUDIO_EXTRACT_TIMEOUT_SECONDS', 900)
+AI_MODERATION_FRAME_EXTRACT_TIMEOUT_SECONDS = _env_int(
+    'AI_MODERATION_FRAME_EXTRACT_TIMEOUT_SECONDS', 30
+)
 ALIYUN_OSS_ENDPOINT = os.environ.get('ALIYUN_OSS_ENDPOINT', 'oss-cn-beijing.aliyuncs.com')
 ALIYUN_OSS_BUCKET = os.environ.get('ALIYUN_OSS_BUCKET', '')
 ALIYUN_OSS_PREFIX = os.environ.get('ALIYUN_OSS_PREFIX', 'ai-temp/')
