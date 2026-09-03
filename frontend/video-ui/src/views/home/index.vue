@@ -345,14 +345,15 @@ const fetchVideos = async (page = 1) => {
       ordering: '-created_at'
     }
 
-    // 处理分类筛选
-    if (activeCategory.value !== 'all' && activeCategory.value !== 'recommend') {
-      // 确保 category_id 是数字类型
-      params.category_id = parseInt(activeCategory.value)
+    // 只有后端返回的数字分类 ID 才作为 category_id 发送。
+    // “热门”和“最新”是排序频道，不能被 parseInt 后误发成 category_id=NaN。
+    const categoryId = Number(activeCategory.value)
+    if (Number.isInteger(categoryId) && categoryId > 0) {
+      params.category_id = categoryId
       console.log('筛选分类ID:', params.category_id)
     }
-    
-    // 推荐按播放量排序
+
+    // 推荐和热门按播放量排序，最新保持创建时间倒序。
     if (activeCategory.value === 'recommend' || activeCategory.value === 'popular') {
       params.ordering = '-views_count'
     }

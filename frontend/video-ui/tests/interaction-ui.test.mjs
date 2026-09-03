@@ -102,6 +102,14 @@ test('login form exposes validation rules used by its template', async () => {
   assert.match(auth, /password: \[[\s\S]*请输入密码/);
 });
 
+test('home sort channels do not send string channel ids as category filters', async () => {
+  const home = await read('views/home/index.vue');
+
+  assert.match(home, /Number\.isInteger\(categoryId\) && categoryId > 0/);
+  assert.doesNotMatch(home, /params\.category_id = parseInt\(activeCategory\.value\)/);
+  assert.match(home, /activeCategory\.value === 'recommend' \|\| activeCategory\.value === 'popular'/);
+});
+
 test('profile username is a read-only login identifier', async () => {
   const profile = await read('views/user/ProfileView.vue');
 
