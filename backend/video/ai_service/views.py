@@ -29,6 +29,41 @@ class ModerationViewSet(viewsets.ViewSet):
     """AI 内容审核视图集"""
     
     permission_classes = [IsAdminUser]
+
+    @staticmethod
+    def _mark_processing(video):
+        """Persist the accepted state before the asynchronous worker starts."""
+        from .models import ModerationResult
+
+        moderation = ModerationResult.objects.filter(
+            video_id=video.id
+        ).order_by('-created_at').first()
+        if moderation is None:
+            moderation = ModerationResult(video=video)
+
+        moderation.status = 'processing'
+        moderation.result = None
+        moderation.confidence = 0.0
+        moderation.neutral_score = 0.0
+        moderation.low_score = 0.0
+        moderation.medium_score = 0.0
+        moderation.high_score = 0.0
+        moderation.flagged_frames = []
+        moderation.error_message = ''
+        moderation.human_decision = 'pending'
+        moderation.human_reviewer = None
+        moderation.human_reviewed_at = None
+        moderation.human_review_remark = ''
+        moderation.save()
+        return moderation
+
+    @staticmethod
+    def _mark_dispatch_failed(moderations):
+        """Expose queue submission failures instead of leaving rows processing."""
+        for moderation in moderations:
+            moderation.status = 'failed'
+            moderation.error_message = '审核任务提交失败，请稍后重试'
+            moderation.save(update_fields=['status', 'error_message', 'updated_at'])
     
     def list(self, request):
         """
@@ -492,7 +527,11 @@ class ModerationViewSet(viewsets.ViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
+        moderation = None
         try:
+            # 接口接单即落库，避免前端在 Worker 启动前仍读到“待审核”。
+            moderation = self._mark_processing(video)
+
             # 提交异步任务
             async_result = enqueue_task(
                 moderate_video_task,
@@ -505,11 +544,14 @@ class ModerationViewSet(viewsets.ViewSet):
             return Response({
                 'detail': '审核任务已提交',
                 'video_id': video_id,
+                'moderation_id': moderation.id,
                 'task_id': async_result.id,
-                'status': 'submitted',
+                'status': 'processing',
                 'strategy': 'managed_in_aliyun_console',
             })
         except Exception as e:
+            if moderation is not None:
+                self._mark_dispatch_failed([moderation])
             logger.error(f"提交审核任务失败: {str(e)}", exc_info=True)
             return Response(
                 {'detail': '提交审核任务失败，请稍后重试'},
@@ -526,6 +568,7 @@ class ModerationViewSet(viewsets.ViewSet):
         云端策略由阿里云控制台统一管理。
         """
         from .tasks import batch_moderate_videos
+        from videos.models import Video
         
         video_ids = request.data.get('video_ids', [])
         if not video_ids or not isinstance(video_ids, list):
@@ -534,7 +577,11 @@ class ModerationViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        moderations = []
         try:
+            videos = Video.objects.filter(id__in=video_ids)
+            moderations = [self._mark_processing(video) for video in videos]
+
             result = enqueue_task(
                 batch_moderate_videos,
                 video_ids,
@@ -544,10 +591,12 @@ class ModerationViewSet(viewsets.ViewSet):
             return Response({
                 'detail': f'已提交 {len(video_ids)} 个审核任务',
                 'task_id': result.id,
-                'status': 'submitted',
+                'status': 'processing',
+                'moderation_ids': [item.id for item in moderations],
                 'video_count': len(video_ids)
             })
         except Exception as e:
+            self._mark_dispatch_failed(moderations)
             logger.error(f"批量审核失败: {str(e)}", exc_info=True)
             return Response(
                 {'detail': '批量审核失败，请稍后重试'},
@@ -663,7 +712,7 @@ class SubtitleViewSet(viewsets.ViewSet):
     def _get_video(self, video_id):
         """获取视频对象"""
         from videos.models import Video
-        return get_object_or_404(Video, id=video_id)
+        return get_object_or_404(Video, id=video_id, deleted_at__isnull=True)
     
     def _check_video_permission(self, video, user, allow_staff=True):
         """检查视频权限"""
@@ -806,7 +855,8 @@ class SubtitleViewSet(viewsets.ViewSet):
         if request.method == 'GET':
             return Response({
                 "video_id": video.id,
-                "subtitles": video.subtitles_draft or []
+                "subtitles": video.subtitles_draft or [],
+                "style": video.subtitle_style or {},
             })
         
         # PUT 请求：保存字幕
@@ -835,17 +885,29 @@ class SubtitleViewSet(viewsets.ViewSet):
                     {"detail": f"subtitles[{i}] 缺少 startTime/endTime"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+        subtitle_style = request.data.get('style')
+        if subtitle_style is not None and not isinstance(subtitle_style, dict):
+            return Response(
+                {"detail": "style 必须为对象"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # 保存字幕
         video.subtitles_draft = subtitles
         video.has_subtitle = len(subtitles) > 0
         video.subtitle_type = 'soft' if video.has_subtitle else 'none'
-        video.save(update_fields=['subtitles_draft', 'has_subtitle', 'subtitle_type'])
+        update_fields = ['subtitles_draft', 'has_subtitle', 'subtitle_type']
+        if subtitle_style is not None:
+            video.subtitle_style = subtitle_style
+            update_fields.append('subtitle_style')
+        video.save(update_fields=update_fields)
         
         return Response({
             "detail": "字幕已保存",
             "video_id": video.id,
-            "count": len(subtitles)
+            "count": len(subtitles),
+            "style": video.subtitle_style or {},
         })
     
     @action(detail=True, methods=['get'], url_path='vtt')

@@ -31,6 +31,52 @@ from rest_framework.test import APIClient
 from videos.models import Video
 
 
+class SubtitleSoftDeleteTests(TestCase):
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username='subtitle-user',
+            email='subtitle@example.com',
+            password='testpass123',
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_subtitle_data_does_not_expose_soft_deleted_video(self):
+        video = Video.objects.create(
+            title='deleted subtitle video',
+            user=self.user,
+            video_file='videos/uploads/deleted.mp4',
+            subtitles_draft=[{'startTime': 0, 'endTime': 1, 'text': 'old'}],
+        )
+        video.soft_delete()
+
+        response = self.client.get(f'/api/ai/subtitle/{video.id}/data/')
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_subtitle_data_persists_and_returns_editor_style(self):
+        video = Video.objects.create(
+            title='subtitle style video',
+            user=self.user,
+            video_file='videos/uploads/style.mp4',
+        )
+        subtitles = [{'startTime': 0, 'endTime': 1, 'text': 'hello'}]
+        editor_style = {'mainColor': '#ffffff', 'fontSize': 32}
+
+        update_response = self.client.put(
+            f'/api/ai/subtitle/{video.id}/data/',
+            {'subtitles': subtitles, 'style': editor_style},
+            format='json',
+        )
+        get_response = self.client.get(f'/api/ai/subtitle/{video.id}/data/')
+
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(update_response.json()['style'], editor_style)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.json()['style'], editor_style)
+
+
 class ProviderRegistryTests(SimpleTestCase):
     @override_settings(
         AI_TEXT_PROVIDER='mock',
@@ -465,6 +511,41 @@ class ModerationReviewAPITests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
 
+    @patch('ai_service.views.enqueue_task')
+    def test_submit_moderation_immediately_persists_processing_state(self, enqueue):
+        enqueue.return_value = MagicMock(id='task-moderation-now')
+
+        response = self.client.post(
+            '/api/ai/moderation/moderate/',
+            {'video_id': self.video.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['status'], 'processing')
+        self.assertEqual(response.data['task_id'], 'task-moderation-now')
+        self.moderation.refresh_from_db()
+        self.assertEqual(self.moderation.status, 'processing')
+        self.assertIsNone(self.moderation.result)
+
+    @patch('ai_service.views.enqueue_task')
+    def test_submit_moderation_exposes_dispatch_failure_in_list_state(self, enqueue):
+        enqueue.side_effect = RuntimeError('queue unavailable')
+
+        response = self.client.post(
+            '/api/ai/moderation/moderate/',
+            {'video_id': self.video.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.moderation.refresh_from_db()
+        self.assertEqual(self.moderation.status, 'failed')
+        self.assertEqual(
+            self.moderation.error_message,
+            '审核任务提交失败，请稍后重试',
+        )
+
     def test_admin_can_confirm_false_positive_with_audit_record(self):
         response = self.client.post(
             '/api/ai/moderation/submit-review/',
@@ -556,6 +637,11 @@ class ModerationReviewAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['effective_result'], 'uncertain')
         self.assertEqual(response.data['label_confidence'], 0.8914)
+        self.assertTrue(
+            response.data['video']['playback_url'].endswith(
+                '/media/videos/uploads/tutorial.mp4'
+            )
+        )
         self.assertEqual(
             response.data['flagged_frames'][0]['label_text'],
             '疑似出现政治人物姓名',

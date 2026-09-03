@@ -32,3 +32,30 @@ test('manual review exposes separate false-positive and violation actions', asyn
   assert.match(stats, /stats\?\.uncertain/);
   assert.doesNotMatch(stats, /unsafe \|\| 0\) \+ \(stats\?\.uncertain/);
 });
+
+test('moderation submission updates rows immediately and follows task completion', async () => {
+  const page = await readFile(new URL('AIModeration.vue', root), 'utf8');
+
+  assert.match(page, /markModerationsProcessing\(videoIds\)/);
+  assert.match(page, /getAITaskStatus\(taskId\)/);
+  assert.match(page, /trackModerationTask\(response\.task_id\)/);
+  assert.match(page, /TASK_POLL_INTERVAL = 1500/);
+  assert.match(page, /onBeforeUnmount/);
+});
+
+test('moderation detail keeps the admin light theme and provides reviewable video evidence', async () => {
+  const detail = await readFile(new URL('components/ModerationDetailDialog.vue', root), 'utf8');
+  const editorToolbar = await readFile(
+    new URL('../../../components/creator/EditorToolbar.vue', root),
+    'utf8'
+  );
+
+  assert.match(detail, /class="moderation-detail-dialog"/);
+  assert.match(detail, /detail\.video\.playback_url/);
+  assert.match(detail, /播放此时间段/);
+  assert.match(detail, /截图仅用于定位，不能单独证明违规/);
+  assert.match(detail, /fit="contain"/);
+  assert.match(detail, /moderation-detail-dialog\.el-dialog[\s\S]*background: #fff !important/);
+  assert.doesNotMatch(editorToolbar, /body \.el-dialog/);
+  assert.doesNotMatch(editorToolbar, /\.el-overlay \.el-dialog__body/);
+});

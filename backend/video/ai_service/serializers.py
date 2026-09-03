@@ -38,6 +38,7 @@ class ModerationResultSerializer(serializers.ModelSerializer):
             'id': obj.video.id,
             'title': obj.video.title,
             'thumbnail': request.build_absolute_uri(obj.video.thumbnail.url) if request and obj.video.thumbnail else None,
+            'playback_url': request.build_absolute_uri(obj.video.video_file.url) if request and obj.video.video_file else None,
             'user': {
                 'id': obj.video.user.id,
                 'username': obj.video.user.username,

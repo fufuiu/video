@@ -1,11 +1,87 @@
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.contrib.auth import get_user_model
 from unittest.mock import Mock, patch, MagicMock
 from rest_framework.test import APIClient
 from .models import Video
+from .tasks import _build_file_identifier
 import os
 
 User = get_user_model()
+
+
+class UploadDeduplicationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='upload-user',
+            email='upload@example.com',
+            password='testpass123',
+        )
+        self.client.force_authenticate(user=self.user)
+        self.file_md5 = 'a' * 32
+
+    def test_check_file_reuses_active_video(self):
+        video = Video.objects.create(
+            title='active',
+            user=self.user,
+            video_file='videos/uploads/active.mp4',
+            hls_file=f'videos/hls/{self.file_md5}/master.m3u8',
+        )
+
+        response = self.client.post('/api/videos/upload/check/', {
+            'file_name': 'sample.mp4',
+            'file_md5': self.file_md5,
+            'file_size': 1024,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['exists'])
+        self.assertEqual(response.json()['video']['id'], video.id)
+
+    def test_check_file_reuses_active_video_before_transcoding(self):
+        video = Video.objects.create(
+            title='waiting for subtitles',
+            user=self.user,
+            video_file=f'videos/uploads/{self.file_md5}_1234abcd.mp4',
+            status='pending_subtitle_edit',
+        )
+
+        response = self.client.post('/api/videos/upload/check/', {
+            'file_name': 'sample.mp4',
+            'file_md5': self.file_md5,
+            'file_size': 1024,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['exists'])
+        self.assertEqual(response.json()['video']['id'], video.id)
+
+    def test_check_file_does_not_reuse_soft_deleted_video(self):
+        video = Video.objects.create(
+            title='deleted',
+            user=self.user,
+            video_file='videos/uploads/deleted.mp4',
+            hls_file=f'videos/hls/{self.file_md5}/master.m3u8',
+        )
+        video.soft_delete()
+
+        response = self.client.post('/api/videos/upload/check/', {
+            'file_name': 'sample.mp4',
+            'file_md5': self.file_md5,
+            'file_size': 1024,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['exists'])
+
+
+class VideoFileIdentifierTests(SimpleTestCase):
+    def test_identifier_preserves_unique_suffix_for_reuploaded_md5(self):
+        identifier = _build_file_identifier(
+            r'C:\media\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_1234abcd.mp4'
+        )
+
+        self.assertEqual(identifier, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_1234abcd')
 
 
 # 注意：字幕检测相关的测试已移至 ai_service/tests.py

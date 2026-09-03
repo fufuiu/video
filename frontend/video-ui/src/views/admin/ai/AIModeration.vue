@@ -189,9 +189,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { 
-  Cpu, View, Picture, QuestionFilled
+  Cpu, View, Picture, QuestionFilled, Loading
 } from '@element-plus/icons-vue';
 import PageHeader from '@/components/common/PageHeader.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -200,6 +200,7 @@ import {
   getAIModerationDetail,
   submitAIModeration, 
   batchAIModeration,
+  getAITaskStatus,
   submitAIReview,
   revokeAIReview,
   reModerateVideo
@@ -226,6 +227,8 @@ const configVisible = ref(false);
 const configTitle = ref('确认云端 AI 审核');
 const currentDetail = ref(null);
 const currentModerationVideo = ref(null);
+const taskPollTimers = new Map();
+const TASK_POLL_INTERVAL = 1500;
 
 // 统计数据
 const stats = reactive({
@@ -264,6 +267,60 @@ const fetchModerationList = async () => {
   }
 };
 
+const markModerationsProcessing = (videoIds) => {
+  const ids = new Set(videoIds.map(id => String(id)));
+  moderationList.value = moderationList.value.map(item => {
+    if (!ids.has(String(item.video?.id))) return item;
+    return Object.assign({}, item, {
+      status: 'processing',
+      result: null,
+      effective_result: null,
+      error_message: '',
+      updated_at: new Date().toISOString()
+    });
+  });
+};
+
+const stopTaskPolling = (taskId) => {
+  const timer = taskPollTimers.get(taskId);
+  if (timer) window.clearTimeout(timer);
+  taskPollTimers.delete(taskId);
+};
+
+const pollModerationTask = async (taskId) => {
+  try {
+    const task = await getAITaskStatus(taskId);
+    if (['succeeded', 'failed', 'cancelled'].includes(task.status)) {
+      stopTaskPolling(taskId);
+      await fetchModerationList();
+
+      // 批量任务完成后继续跟踪它创建的每个单视频审核任务。
+      if (task.status === 'succeeded' && Array.isArray(task.result)) {
+        task.result.forEach(item => {
+          if (item.task_id && item.status === 'submitted') {
+            trackModerationTask(item.task_id);
+          }
+        });
+      }
+      return;
+    }
+  } catch (error) {
+    console.warn('审核任务状态查询失败，将刷新列表:', error);
+    stopTaskPolling(taskId);
+    await fetchModerationList();
+    return;
+  }
+
+  const timer = window.setTimeout(() => pollModerationTask(taskId), TASK_POLL_INTERVAL);
+  taskPollTimers.set(taskId, timer);
+};
+
+function trackModerationTask(taskId) {
+  if (!taskId || taskPollTimers.has(taskId)) return;
+  taskPollTimers.set(taskId, null);
+  void pollModerationTask(taskId);
+}
+
 // 审核单个视频
 const moderateVideo = (row) => {
   currentModerationVideo.value = row;
@@ -287,23 +344,31 @@ const confirmModerate = async () => {
   try {
     loading.value = true;
     configVisible.value = false;
+    let response;
+    let videoIds;
     
     if (currentModerationVideo.value) {
-      await submitAIModeration({
+      videoIds = [currentModerationVideo.value.video.id];
+      response = await submitAIModeration({
         video_id: currentModerationVideo.value.video.id
       });
     } else {
-      const videoIds = selectedVideos.value.map(function(v) { return v.video.id; });
-      await batchAIModeration({
+      videoIds = selectedVideos.value.map(function(v) { return v.video.id; });
+      response = await batchAIModeration({
         video_ids: videoIds
       });
     }
 
+    // 接口接单后立即回写当前行，不等待 Worker 或下一次手动刷新。
+    markModerationsProcessing(videoIds);
     ElMessage.success('审核任务已提交');
-    fetchModerationList();
+    await fetchModerationList();
+    trackModerationTask(response.task_id);
+    selectedVideos.value = [];
   } catch (error) {
     console.error('提交审核任务失败:', error);
     ElMessage.error('提交审核任务失败');
+    await fetchModerationList();
   } finally {
     loading.value = false;
   }
@@ -375,10 +440,12 @@ const handleReModerate = async () => {
   try {
     await ElMessageBox.confirm('重新审核会清除现有人工结论，确认继续？', '重新 AI 审核', { type: 'warning' });
     loading.value = true;
-    await reModerateVideo({ moderation_id: currentDetail.value.id });
+    const response = await reModerateVideo({ moderation_id: currentDetail.value.id });
+    markModerationsProcessing([currentDetail.value.video.id]);
     ElMessage.success('重新审核任务已提交');
     detailVisible.value = false;
-    fetchModerationList();
+    await fetchModerationList();
+    trackModerationTask(response.task_id);
   } catch (error) {
     if (error !== 'cancel') ElMessage.error('重新审核提交失败');
   } finally {
@@ -469,6 +536,13 @@ const formatTime = (seconds) => {
 
 onMounted(() => {
   fetchModerationList();
+});
+
+onBeforeUnmount(() => {
+  taskPollTimers.forEach(timer => {
+    if (timer) window.clearTimeout(timer);
+  });
+  taskPollTimers.clear();
 });
 </script>
 

@@ -21,6 +21,7 @@
           ref="videoPlayerRef"
           :video-url="videoUrl"
           :subtitles="subtitles"
+          :subtitle-display-mode="subtitleDisplayMode"
           :active-tab="activeTab"
           :is-panel-collapsed="isPanelCollapsed"
           @update:active-tab="activeTab = $event"
@@ -40,6 +41,8 @@
           :subtitles="subtitles"
           :current-subtitle-index="currentSubtitleIndex"
           :video-id="route.query.videoId"
+          :display-mode="subtitleDisplayMode"
+          @update:display-mode="subtitleDisplayMode = $event"
           @select-subtitle="selectSubtitle"
           @add-subtitle="handleAddSubtitle"
           @merge-subtitle="handleMergeSubtitle"
@@ -87,40 +90,26 @@ const isEditBeforeTranscode = computed(() => {
 
 // 是否显示上传按钮
 const showUploadButton = computed(() => {
-  // 调试日志
-  console.log('=== 上传按钮显示条件检查 ===')
-  console.log('isEditBeforeTranscode:', isEditBeforeTranscode.value)
-  console.log('pendingVideoFile:', pendingVideoFile.value)
-  console.log('videoStatus:', videoStatus.value)
-  console.log('route.query:', route.query)
-  
-  // 转码前编辑模式下显示上传按钮
-  if (!isEditBeforeTranscode.value) {
-    console.log('不是转码前编辑模式，不显示按钮')
-    return false
-  }
-  
-  // 有待上传的本地视频文件
+  // 新选择的本地视频仅在转码前编辑模式中允许上传。
   if (pendingVideoFile.value) {
-    console.log('有待上传的本地文件，显示按钮')
+    return isEditBeforeTranscode.value
+  }
+
+  // 已上传且等待字幕编辑的视频必须始终提供清晰的流程出口，即使旧链接
+  // 没有携带 mode 参数。
+  if (route.query.videoId && videoStatus.value === 'pending_subtitle_edit') {
     return true
   }
-  
-  // 或者视频状态是 draft 或 pending_subtitle_edit（表示还没开始转码）
-  if (videoStatus.value === 'draft' || videoStatus.value === 'pending_subtitle_edit') {
-    console.log(`视频状态是 ${videoStatus.value}，显示按钮`)
-    return true
-  }
-  
-  console.log('不满足任何条件，不显示按钮')
-  return false
+
+  return isEditBeforeTranscode.value && videoStatus.value === 'draft'
 })
 
 // 状态
-const videoUrl = ref('') // 模拟数据，暂时不需要真实视频
-const videoTitle = ref('示例视频标题')
+const videoUrl = ref('')
+const videoTitle = ref('')
 const videoStatus = ref('draft')
 const activeTab = ref('subtitle')
+const subtitleDisplayMode = ref('both')
 const isPanelCollapsed = ref(false)
 
 const localPreviewUrl = ref('')
@@ -137,6 +126,24 @@ const duration = ref(0)
 
 const playerInstance = ref(null)
 const videoPlayerRef = ref(null) // 添加子组件引用
+
+const resetEditorState = () => {
+  if (localPreviewUrl.value) {
+    URL.revokeObjectURL(localPreviewUrl.value)
+    localPreviewUrl.value = ''
+  }
+  pendingVideoFile.value = null
+  videoUrl.value = ''
+  videoTitle.value = ''
+  videoStatus.value = 'draft'
+  subtitleDisplayMode.value = 'both'
+  subtitles.value = []
+  currentSubtitleIndex.value = -1
+  currentTime.value = 0
+  duration.value = 0
+  subtitleTaskId.value = ''
+  isGeneratingSubtitles.value = false
+}
 
 const resolvePlayableUrl = (video) => {
   if (!video) return ''
@@ -169,11 +176,8 @@ const loadSubtitles = async () => {
     }
   } catch (error) {
     console.error('加载字幕失败:', error)
-    // 如果是404错误，说明视频还没有字幕，这是正常的
-    if (error.response?.status === 404) {
-      subtitles.value = []
-      currentSubtitleIndex.value = -1
-    }
+    subtitles.value = []
+    currentSubtitleIndex.value = -1
   }
 }
 
@@ -239,12 +243,14 @@ const loadVideoInfo = async () => {
     if (detail?.title) {
       videoTitle.value = detail.title
     }
+    videoStatus.value = detail?.status || 'draft'
     const playableUrl = resolvePlayableUrl(detail)
-    if (playableUrl) {
-      videoUrl.value = playableUrl
-    }
+    videoUrl.value = playableUrl
   } catch (error) {
     console.error('加载视频信息失败:', error)
+    videoUrl.value = ''
+    videoTitle.value = ''
+    ElMessage.error('视频不存在、已删除或暂时无法读取')
   }
 }
 
@@ -253,6 +259,7 @@ onMounted(async () => {
   
   // 转码前编辑模式 + 没有 videoId：等待用户上传新视频
   if (isEditBeforeTranscode.value && !videoId) {
+    resetEditorState()
     videoTitle.value = '新视频'
     videoStatus.value = 'draft'
     console.log('转码前编辑模式：等待用户上传视频')
@@ -260,6 +267,7 @@ onMounted(async () => {
   }
   
   // 其他情况：加载已有视频信息（包括转码前编辑模式但有 videoId 的情况）
+  resetEditorState()
   await Promise.all([loadVideoInfo(), loadSubtitles()])
 })
 
@@ -267,8 +275,7 @@ watch(
   () => route.query.videoId,
   async (newId, oldId) => {
     if (!newId || newId === oldId) return
-    subtitleTaskId.value = ''
-    isGeneratingSubtitles.value = false
+    resetEditorState()
     await Promise.all([loadVideoInfo(), loadSubtitles()])
   }
 )
@@ -419,8 +426,9 @@ const handleSave = async () => {
   try {
     const videoId = route.query.videoId
     
-    // 转码前编辑模式：保存到本地状态
-    if (isEditBeforeTranscode.value) {
+    // 尚未上传、没有 videoId 的本地素材只能保存在当前页面状态中。
+    // 从创作中心进入的已上传视频即使处于转码前编辑模式，也必须保存到服务端。
+    if (isEditBeforeTranscode.value && !videoId) {
       // 只是本地保存，不与服务器交互
       ElMessage.success('字幕已保存到本地')
       return
@@ -436,7 +444,7 @@ const handleSave = async () => {
     const style = videoPlayerRef.value?.getSubtitleStyle?.() || null
 
     await updateVideoSubtitles(videoId, subtitles.value, style)
-    ElMessage.success('字幕已保存')
+    ElMessage.success('字幕已保存；编辑完成后请点击“完成字幕并开始处理”')
   } catch (error) {
     console.error('保存失败:', error)
     ElMessage.error('保存失败: ' + (error.message || '未知错误'))
@@ -731,7 +739,9 @@ const handleImportSubtitle = async (file) => {
 // 处理设置变更
 const handleSettingsChange = (newSettings) => {
   console.log('设置已更新:', newSettings)
-  // TODO: 应用设置到编辑器
+  if (['both', 'main', 'translation'].includes(newSettings?.subtitleDisplay)) {
+    subtitleDisplayMode.value = newSettings.subtitleDisplay
+  }
 }
 
 // 辅助函数：格式化时间为 SRT 格式

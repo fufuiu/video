@@ -4,6 +4,7 @@
     @update:model-value="$emit('update:modelValue', $event)"
     title="AI 审核详情"
     width="920px"
+    class="moderation-detail-dialog"
     destroy-on-close
     @close="$emit('close')"
     append-to-body
@@ -85,13 +86,37 @@
       <el-divider v-if="detail.flagged_frames?.length" />
 
       <section v-if="detail.flagged_frames?.length" class="detail-section">
-        <h3>命中事件（{{ detail.flagged_frames.length }}）</h3>
+        <h3>AI 待复核线索（{{ detail.flagged_frames.length }}）</h3>
+        <el-alert type="warning" :closable="false" show-icon class="evidence-note">
+          云端服务只返回标签、置信度和命中时间，没有返回文字位置或检测框。截图仅用于定位，不能单独证明违规；请播放对应时间段后再作人工结论。
+        </el-alert>
+
+        <div v-if="detail.video?.playback_url" ref="playerPanel" class="review-player-panel">
+          <div class="review-player-heading">
+            <div>
+              <h4>原视频复核</h4>
+              <p>点击任一线索的“播放此时间段”，播放器会从命中前 1 秒开始。</p>
+            </div>
+          </div>
+          <video
+            ref="reviewPlayer"
+            class="review-player"
+            :src="detail.video.playback_url"
+            :poster="detail.video.thumbnail || undefined"
+            controls
+            preload="metadata"
+          >
+            当前环境无法播放该视频，请通过下方时间范围定位原视频。
+          </video>
+        </div>
+
         <div class="flagged-events">
           <article v-for="(frame, index) in detail.flagged_frames" :key="index" class="event-card">
             <el-image
               v-if="frame.image_url"
               :src="frame.image_url"
-              fit="cover"
+              :alt="`命中时间 ${formatRange(frame)} 的定位截图`"
+              fit="contain"
               class="event-image"
               :preview-src-list="[frame.image_url]"
               preview-teleported
@@ -99,7 +124,7 @@
             <div v-else class="event-image event-image-empty">截图提取失败</div>
             <div class="event-body">
               <div class="event-header">
-                <strong>{{ frame.label_text || frame.label || '疑似风险内容' }}</strong>
+                <strong>供应商标签线索：{{ frame.label_text || frame.label || '疑似风险内容' }}</strong>
                 <el-tag :type="frame.risk_level === 'high' ? 'danger' : 'warning'" size="small">
                   {{ frame.risk_level_text || '待人工复核' }}
                 </el-tag>
@@ -109,7 +134,15 @@
               <p v-if="frame.source_frame_count > 1">
                 已合并 {{ frame.source_frame_count }} 个连续命中帧
               </p>
+              <p v-if="frame.description">供应商说明：{{ frame.description }}</p>
               <p class="raw-label">原始标签：{{ frame.label || '未知' }}</p>
+              <el-button
+                v-if="detail.video?.playback_url"
+                type="primary"
+                plain
+                size="small"
+                @click="seekToEvent(frame)"
+              >播放此时间段</el-button>
             </div>
           </article>
         </div>
@@ -151,7 +184,11 @@
 </template>
 
 <script setup>
+import { nextTick, ref } from 'vue';
 import { Picture } from '@element-plus/icons-vue';
+
+const reviewPlayer = ref(null);
+const playerPanel = ref(null);
 
 const props = defineProps({
   modelValue: Boolean,
@@ -182,6 +219,20 @@ const formatRange = (frame) => {
     : props.formatTime(start);
 };
 
+const seekToEvent = async frame => {
+  await nextTick();
+  const player = reviewPlayer.value;
+  if (!player) return;
+  const start = Number(frame.start_time ?? frame.timestamp ?? 0);
+  player.currentTime = Math.max(0, start - 1);
+  playerPanel.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  try {
+    await player.play();
+  } catch (_error) {
+    // 浏览器可能阻止自动播放，时间仍已定位，审核员可手动点击播放。
+  }
+};
+
 const getHumanDecisionText = decision => ({
   confirmed_safe: '确认安全',
   false_positive: '确认误报',
@@ -203,6 +254,11 @@ const getHumanDecisionText = decision => ({
 .result-item .value { font-size: 18px; font-weight: 600; color: #18191c; }
 .muted { color: #909399; }
 .confidence-note { margin-top: 16px; }
+.evidence-note { margin-bottom: 16px; line-height: 1.6; }
+.review-player-panel { margin-bottom: 16px; padding: 16px; background: #f6f7f8; border: 1px solid #ebeef5; border-radius: 8px; }
+.review-player-heading h4 { margin: 0 0 6px; color: #18191c; font-size: 15px; }
+.review-player-heading p { margin: 0 0 12px; color: #61666d; font-size: 13px; }
+.review-player { display: block; width: 100%; max-height: 420px; background: #000; border-radius: 6px; }
 .flagged-events { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
 .event-card { overflow: hidden; background: #f6f7f8; border: 1px solid #ebeef5; border-radius: 8px; }
 .event-image { display: block; width: 100%; height: 190px; background: #ebeef5; }
@@ -214,6 +270,16 @@ const getHumanDecisionText = decision => ({
 .raw-label { color: #909399; word-break: break-all; }
 .detail-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
 .image-error { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #f5f5f5; color: #ccc; font-size: 32px; }
+
+:global(.moderation-detail-dialog.el-dialog) {
+  background: #fff !important;
+  border: 1px solid #ebeef5 !important;
+  color: #303133 !important;
+}
+:global(.moderation-detail-dialog .el-dialog__header) { border-bottom: 1px solid #ebeef5 !important; }
+:global(.moderation-detail-dialog .el-dialog__title) { color: #18191c !important; }
+:global(.moderation-detail-dialog .el-dialog__body) { color: #303133 !important; }
+:global(.moderation-detail-dialog .el-dialog__headerbtn .el-dialog__close) { color: #606266 !important; }
 
 @media (max-width: 760px) {
   .result-summary { grid-template-columns: 1fr; }
