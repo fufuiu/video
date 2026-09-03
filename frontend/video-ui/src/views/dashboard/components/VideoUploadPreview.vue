@@ -326,7 +326,7 @@ const handleChange = (uploadFile) => {
 
 /* 底部信息栏 */
 .info-bar {
-  background: linear-gradient(135deg, #fff 0%, #fafbfc 100%);
+  background: #fff;
   border: 1px solid #e3e5e7;
   border-radius: 8px;
   padding: 20px;
@@ -418,7 +418,7 @@ const handleChange = (uploadFile) => {
   flex-direction: column;
   gap: 16px;
   padding: 10px;
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  background: #f9fafb;
   border: 1px solid #e3e5e7;
   border-radius: 8px;
 }
@@ -479,7 +479,7 @@ const handleChange = (uploadFile) => {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%);
+  background: rgba(139, 92, 246, 0.1);
   border-radius: 20px;
   font-size: 12px;
   font-weight: 500;

@@ -1,12 +1,12 @@
 <template>
   <section id="sidebar" :class="{ 'hide': isCollapsed }">
-    <a href="#" class="brand">
+    <a href="/home" class="brand" @click.prevent="navigateTo('/home')">
       <span class="text">MindPalette</span>
     </a>
     <ul class="side-menu top">
       <!-- 创作者仪表盘分组 -->
       <li class="menu-group animate__animated animate__fadeInLeft animate__faster">
-        <a href="#" class="group-title" @click.prevent="toggleGroup('dashboard')" :data-title="isCollapsed ? '创作者仪表盘' : ''">
+        <a href="#" class="group-title" role="button" :aria-expanded="expandedGroups.dashboard" @click.prevent="toggleGroup('dashboard')" :data-title="isCollapsed ? '创作者仪表盘' : ''">
           <el-icon class="bx"><Histogram /></el-icon>
           <span class="text">创作者仪表盘</span>
           <span class="arrow" :class="{ 'expanded': expandedGroups.dashboard }">
@@ -38,7 +38,7 @@
       
       <!-- 个人中心分组 -->
       <li class="menu-group animate__animated animate__fadeInLeft animate__faster">
-        <a href="#" class="group-title" @click.prevent="toggleGroup('personal')" :data-title="isCollapsed ? '个人中心' : ''">
+        <a href="#" class="group-title" role="button" :aria-expanded="expandedGroups.personal" @click.prevent="toggleGroup('personal')" :data-title="isCollapsed ? '个人中心' : ''">
           <el-icon class="bx"><User /></el-icon>
           <span class="text">个人中心</span>
           <span v-if="unreadMessages > 0 && !expandedGroups.personal" class="group-badge">{{ unreadMessages }}</span>
@@ -77,7 +77,7 @@
       
       <!-- 视频管理分组 -->
       <li class="menu-group animate__animated animate__fadeInLeft animate__faster">
-        <a href="#" class="group-title" @click.prevent="toggleGroup('videos')" :data-title="isCollapsed ? '视频管理' : ''">
+        <a href="#" class="group-title" role="button" :aria-expanded="expandedGroups.videos" @click.prevent="toggleGroup('videos')" :data-title="isCollapsed ? '视频管理' : ''">
           <el-icon class="bx"><FolderOpened /></el-icon>
           <span class="text">视频管理</span>
           <span class="arrow" :class="{ 'expanded': expandedGroups.videos }">
@@ -114,8 +114,8 @@
       
       <!-- 管理后台分组 (仅管理员可见) -->
       <li v-if="isAdmin" class="menu-group admin-group animate__animated animate__fadeInLeft animate__faster">
-        <a href="#" class="group-title" @click.prevent="toggleGroup('admin')" :data-title="isCollapsed ? '管理后台' : ''">
-          <span class="admin-badge animate__animated animate__pulse animate__infinite animate__slower">ADMIN</span>
+        <a href="#" class="group-title" role="button" :aria-expanded="expandedGroups.admin" @click.prevent="toggleGroup('admin')" :data-title="isCollapsed ? '管理后台' : ''">
+          <span class="admin-badge">ADMIN</span>
           <el-icon class="bx"><Management /></el-icon>
           <span class="text">管理员后台</span>
           <span class="arrow" :class="{ 'expanded': expandedGroups.admin }">
@@ -158,8 +158,8 @@
       
       <!-- 超级管理员分组 (仅超级管理员可见) -->
       <li v-if="isSuperAdmin" class="menu-group super-admin-group animate__animated animate__fadeInLeft animate__faster">
-        <a href="#" class="group-title" @click.prevent="toggleGroup('superadmin')" :data-title="isCollapsed ? '超级管理员' : ''">
-          <span class="super-admin-badge animate__animated animate__pulse animate__infinite animate__slower">SUPER</span>
+        <a href="#" class="group-title" role="button" :aria-expanded="expandedGroups.superadmin" @click.prevent="toggleGroup('superadmin')" :data-title="isCollapsed ? '超级管理员' : ''">
+          <span class="super-admin-badge">SUPER</span>
           <el-icon class="bx"><Key /></el-icon>
           <span class="text">超级管理员</span>
           <span class="arrow" :class="{ 'expanded': expandedGroups.superadmin }">
@@ -515,7 +515,7 @@ const logout = () => {
   top: 0;
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, rgba(33, 150, 243, 0.1) 0%, transparent 100%);
+  background: rgba(33, 150, 243, 0.1);
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: -1;
 }
@@ -591,7 +591,7 @@ const logout = () => {
   justify-content: center;
   min-width: 20px;
   height: 20px;
-  background: linear-gradient(135deg, #f44336 0%, #e91e63 100%);
+  background: #f44336;
   color: #fff;
   font-size: 12px;
   font-weight: 500;
@@ -599,7 +599,6 @@ const logout = () => {
   margin-left: 10px;
   padding: 0 6px;
   box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4);
-  animation: pulse 2s ease-in-out infinite;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -711,7 +710,7 @@ const logout = () => {
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  background: linear-gradient(135deg, #f44336 0%, #e91e63 100%);
+  background: #f44336;
   color: #fff;
   font-size: 11px;
   font-weight: 500;
@@ -781,7 +780,7 @@ const logout = () => {
   justify-content: center;
   min-width: 20px;
   height: 20px;
-  background: linear-gradient(135deg, #f44336 0%, #e91e63 100%);
+  background: #f44336;
   color: #fff;
   font-size: 12px;
   font-weight: 500;
@@ -836,7 +835,7 @@ const logout = () => {
 }
 
 #sidebar .submenu li.vip-item a {
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  background: #ffd700;
   color: #333;
   font-weight: 600;
   position: relative;
@@ -844,28 +843,17 @@ const logout = () => {
 }
 
 #sidebar .submenu li.vip-item a::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-  transition: left 0.5s;
-}
-
-#sidebar .submenu li.vip-item a:hover::before {
-  left: 100%;
+  content: none;
 }
 
 #sidebar .submenu li.vip-item a:hover {
-  background: linear-gradient(135deg, #ffed4e 0%, #ffd700 100%);
+  background: #ffed4e;
   color: #000;
   box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
 }
 
 #sidebar .submenu li.vip-item.active a {
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  background: #ffd700;
   color: #000;
   border-left: 3px solid #ff9800;
   box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
@@ -877,7 +865,7 @@ const logout = () => {
   justify-content: center;
   min-width: 32px;
   height: 18px;
-  background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+  background: #ff9800;
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -886,7 +874,6 @@ const logout = () => {
   padding: 0 6px;
   box-shadow: 0 2px 6px rgba(255, 152, 0, 0.4);
   letter-spacing: 0.5px;
-  animation: pulse 2s ease-in-out infinite;
 }
 
 #sidebar .submenu li.vip-item a .bx {
@@ -904,7 +891,7 @@ const logout = () => {
 
 /* 折叠状态下的 VIP 样式 */
 #sidebar.hide .submenu li.vip-item a {
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  background: #ffd700;
 }
 
 #sidebar.hide .submenu li.vip-item a .vip-badge {
@@ -921,7 +908,7 @@ const logout = () => {
   content: attr(data-title);
   position: absolute;
   left: 60px;
-  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  background: #ffd700;
   color: #000;
   padding: 8px 12px;
   border-radius: 6px;
@@ -934,12 +921,12 @@ const logout = () => {
 
 /* 管理员分组样式 */
 #sidebar .menu-group.admin-group .group-title {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+  background: rgba(139, 92, 246, 0.15);
   border-left: 3px solid #8b5cf6;
 }
 
 #sidebar .menu-group.admin-group .group-title:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+  background: rgba(139, 92, 246, 0.2);
 }
 
 #sidebar .menu-group.admin-group .group-title .bx {
@@ -952,7 +939,7 @@ const logout = () => {
   justify-content: center;
   min-width: 48px;
   height: 18px;
-  background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+  background: #8b5cf6;
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -965,18 +952,18 @@ const logout = () => {
 
 /* 管理员菜单项样式 */
 #sidebar .submenu li.admin-item a {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+  background: rgba(139, 92, 246, 0.08);
   border-left: 3px solid transparent;
 }
 
 #sidebar .submenu li.admin-item a:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+  background: rgba(139, 92, 246, 0.15);
   color: #8b5cf6;
   border-left: 3px solid #8b5cf6;
 }
 
 #sidebar .submenu li.admin-item.active a {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+  background: rgba(139, 92, 246, 0.2);
   color: #8b5cf6;
   border-left: 3px solid #8b5cf6;
   font-weight: 600;
@@ -997,7 +984,7 @@ const logout = () => {
 
 /* 折叠状态下的管理员样式 */
 #sidebar.hide .menu-group.admin-group .group-title {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+  background: rgba(139, 92, 246, 0.15);
   border-left: none;
   border-right: 3px solid #8b5cf6;
 }
@@ -1013,14 +1000,14 @@ const logout = () => {
 }
 
 #sidebar.hide .submenu li.admin-item a {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+  background: rgba(139, 92, 246, 0.08);
 }
 
 #sidebar.hide .submenu li.admin-item a:hover::after {
   content: attr(data-title);
   position: absolute;
   left: 60px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.95) 0%, rgba(168, 85, 247, 0.95) 100%);
+  background: rgba(139, 92, 246, 0.95);
   color: #fff;
   padding: 8px 12px;
   border-radius: 6px;
@@ -1033,12 +1020,12 @@ const logout = () => {
 
 /* 超级管理员分组样式 */
 #sidebar .menu-group.super-admin-group .group-title {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.1) 0%, rgba(239, 68, 68, 0.1) 100%);
+  background: rgba(220, 38, 38, 0.1);
   border-left: 3px solid #dc2626;
 }
 
 #sidebar .menu-group.super-admin-group .group-title:hover {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(239, 68, 68, 0.15) 100%);
+  background: rgba(220, 38, 38, 0.15);
 }
 
 #sidebar .menu-group.super-admin-group .group-title .bx {
@@ -1051,7 +1038,7 @@ const logout = () => {
   justify-content: center;
   min-width: 48px;
   height: 18px;
-  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  background: #dc2626;
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -1060,23 +1047,22 @@ const logout = () => {
   padding: 0 6px;
   box-shadow: 0 2px 6px rgba(220, 38, 38, 0.4);
   letter-spacing: 0.5px;
-  animation: pulse 2s ease-in-out infinite;
 }
 
 /* 超级管理员菜单项样式 */
 #sidebar .submenu li.super-admin-item a {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.05) 0%, rgba(239, 68, 68, 0.05) 100%);
+  background: rgba(220, 38, 38, 0.05);
   border-left: 3px solid transparent;
 }
 
 #sidebar .submenu li.super-admin-item a:hover {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.12) 0%, rgba(239, 68, 68, 0.12) 100%);
+  background: rgba(220, 38, 38, 0.12);
   color: #dc2626;
   border-left: 3px solid #dc2626;
 }
 
 #sidebar .submenu li.super-admin-item.active a {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(239, 68, 68, 0.15) 100%);
+  background: rgba(220, 38, 38, 0.15);
   color: #dc2626;
   border-left: 3px solid #dc2626;
   font-weight: 600;
@@ -1097,7 +1083,7 @@ const logout = () => {
 
 /* 折叠状态下的超级管理员样式 */
 #sidebar.hide .menu-group.super-admin-group .group-title {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.1) 0%, rgba(239, 68, 68, 0.1) 100%);
+  background: rgba(220, 38, 38, 0.1);
   border-left: none;
   border-right: 3px solid #dc2626;
 }
@@ -1113,14 +1099,14 @@ const logout = () => {
 }
 
 #sidebar.hide .submenu li.super-admin-item a {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+  background: rgba(139, 92, 246, 0.08);
 }
 
 #sidebar.hide .submenu li.super-admin-item a:hover::after {
   content: attr(data-title);
   position: absolute;
   left: 60px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.95) 0%, rgba(168, 85, 247, 0.95) 100%);
+  background: rgba(139, 92, 246, 0.95);
   color: #fff;
   padding: 8px 12px;
   border-radius: 6px;

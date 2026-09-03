@@ -11,7 +11,7 @@
       <el-row :gutter="20">
         <el-col :span="6">
           <div class="metric-card animate__animated animate__zoomIn animate__faster">
-            <div class="metric-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="metric-icon" style="background: #667eea;">
               <el-icon><User /></el-icon>
             </div>
             <div class="metric-content">
@@ -26,7 +26,7 @@
         </el-col>
         <el-col :span="6">
           <div class="metric-card animate__animated animate__zoomIn animate__faster">
-            <div class="metric-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+            <div class="metric-icon" style="background: #f093fb;">
               <el-icon><VideoPlay /></el-icon>
             </div>
             <div class="metric-content">
@@ -41,7 +41,7 @@
         </el-col>
         <el-col :span="6">
           <div class="metric-card animate__animated animate__zoomIn animate__faster">
-            <div class="metric-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+            <div class="metric-icon" style="background: #4facfe;">
               <el-icon><View /></el-icon>
             </div>
             <div class="metric-content">
@@ -56,7 +56,7 @@
         </el-col>
         <el-col :span="6">
           <div class="metric-card animate__animated animate__zoomIn animate__faster">
-            <div class="metric-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+            <div class="metric-icon" style="background: #fa709a;">
               <el-icon><Star /></el-icon>
             </div>
             <div class="metric-content">
@@ -296,10 +296,7 @@ const renderUserChart = (data) => {
         smooth: true,
         data: data.counts,
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(102, 126, 234, 0.5)' },
-            { offset: 1, color: 'rgba(102, 126, 234, 0.1)' }
-          ])
+          color: 'rgba(102, 126, 234, 0.14)'
         },
         lineStyle: {
           color: '#667eea'
@@ -344,10 +341,7 @@ const renderVideoChart = (data) => {
         smooth: true,
         data: data.counts,
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(240, 147, 251, 0.5)' },
-            { offset: 1, color: 'rgba(240, 147, 251, 0.1)' }
-          ])
+          color: 'rgba(240, 147, 251, 0.14)'
         },
         lineStyle: {
           color: '#f093fb'

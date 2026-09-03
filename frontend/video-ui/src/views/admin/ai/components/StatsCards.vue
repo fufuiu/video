@@ -101,27 +101,27 @@ defineProps({
 }
 
 .stat-icon.pending {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: #fff;
 }
 
 .stat-icon.processing {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: #f093fb;
   color: #fff;
 }
 
 .stat-icon.safe {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: #4facfe;
   color: #fff;
 }
 
 .stat-icon.review {
-  background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+  background: #f6d365;
   color: #fff;
 }
 
 .stat-icon.unsafe {
-  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+  background: #fa709a;
   color: #fff;
 }
 

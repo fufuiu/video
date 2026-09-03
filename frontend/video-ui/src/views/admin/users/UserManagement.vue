@@ -11,7 +11,7 @@
       <el-row :gutter="20">
         <el-col :span="6">
           <div class="stat-card animate__animated animate__zoomIn animate__faster">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="stat-icon" style="background: #667eea;">
               <el-icon><User /></el-icon>
             </div>
             <div class="stat-content">
@@ -22,7 +22,7 @@
         </el-col>
         <el-col :span="6">
           <div class="stat-card animate__animated animate__zoomIn animate__faster">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+            <div class="stat-icon" style="background: #f093fb;">
               <el-icon><Star /></el-icon>
             </div>
             <div class="stat-content">
@@ -33,7 +33,7 @@
         </el-col>
         <el-col :span="6">
           <div class="stat-card animate__animated animate__zoomIn animate__faster">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+            <div class="stat-icon" style="background: #4facfe;">
               <el-icon><CircleCheck /></el-icon>
             </div>
             <div class="stat-content">
@@ -44,7 +44,7 @@
         </el-col>
         <el-col :span="6">
           <div class="stat-card animate__animated animate__zoomIn animate__faster">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+            <div class="stat-icon" style="background: #fa709a;">
               <el-icon><TrendCharts /></el-icon>
             </div>
             <div class="stat-content">
@@ -976,7 +976,7 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 30px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   border-radius: 12px;
   color: #fff;
 }

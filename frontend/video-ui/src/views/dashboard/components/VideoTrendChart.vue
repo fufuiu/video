@@ -135,10 +135,7 @@ const initChart = () => {
           color: '#3b82f6'
         },
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(59, 130, 246, 0.3)' },
-            { offset: 1, color: 'rgba(59, 130, 246, 0.05)' }
-          ])
+          color: 'rgba(59, 130, 246, 0.12)'
         },
         data: props.data.views || []
       },
@@ -156,10 +153,7 @@ const initChart = () => {
           color: '#10b981'
         },
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(16, 185, 129, 0.3)' },
-            { offset: 1, color: 'rgba(16, 185, 129, 0.05)' }
-          ])
+          color: 'rgba(16, 185, 129, 0.12)'
         },
         data: props.data.likes || []
       },
@@ -177,10 +171,7 @@ const initChart = () => {
           color: '#f59e0b'
         },
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(245, 158, 11, 0.3)' },
-            { offset: 1, color: 'rgba(245, 158, 11, 0.05)' }
-          ])
+          color: 'rgba(245, 158, 11, 0.12)'
         },
         data: props.data.comments || []
       }

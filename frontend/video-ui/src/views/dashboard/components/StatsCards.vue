@@ -99,19 +99,19 @@ const formatNumber = (num) => {
 }
 
 .stat-card.video .stat-icon {
-  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  background: #e0e7ff;
 }
 
 .stat-card.like .stat-icon {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  background: #fef3c7;
 }
 
 .stat-card.follower .stat-icon {
-  background: linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%);
+  background: #ddd6fe;
 }
 
 .stat-card.view .stat-icon {
-  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  background: #d1fae5;
 }
 
 .stat-card:hover .stat-icon {

@@ -167,7 +167,7 @@ const formatNumber = (n) => {
   bottom: 0;
   width: 100%;
   padding: 6px 8px;
-  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.6));
+  background: rgba(0, 0, 0, 0.58);
   color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
 }

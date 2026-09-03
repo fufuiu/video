@@ -1064,19 +1064,19 @@ onUnmounted(() => {
 }
 
 .stat-icon.database {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
 }
 
 .stat-icon.tables {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: #f093fb;
 }
 
 .stat-icon.connections {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: #4facfe;
 }
 
 .stat-icon.backups {
-  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  background: #43e97b;
 }
 
 .stat-content {

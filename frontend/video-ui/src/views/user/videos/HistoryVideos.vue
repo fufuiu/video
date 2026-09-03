@@ -435,7 +435,7 @@ const goToHome = () => {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #00a1d6 0%, #00b5e5 100%);
+  background: #00a1d6;
   transition: width 0.3s;
 }
 

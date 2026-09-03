@@ -53,23 +53,24 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-color, #fff);
   color: var(--text-color, #333);
-  overflow: hidden;
-  transition: background-color 0.3s ease;
+  overflow-x: hidden;
+  overflow-y: auto;
+  transition: background-color var(--motion-normal, 220ms) ease, color var(--motion-normal, 220ms) ease;
 }
 
 #app {
-  height: 100vh;
+  min-height: 100dvh;
   width: 100vw;
 }
 
 .app-wrapper {
-  height: 100vh;
+  min-height: 100dvh;
   width: 100%;
   display: flex;
   flex-direction: column;
   position: relative;
   /* 添加平滑过渡动画 */
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color var(--motion-normal, 220ms) ease;
 }
 
 /* 全屏状态下的特殊样式 */
@@ -95,7 +96,7 @@ body {
 .main-container {
   flex: 1;
   width: 100%;
-  height: 100%;
+  min-height: 0;
   overflow-y: auto;
   position: relative;
   /* 内容平滑过渡 */

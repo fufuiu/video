@@ -34,10 +34,12 @@
       </div>
       <div class="actions">
         <button @click="handleLike" :class="{ active: isLiked }">
-          👍 {{ videoData.likes_count }}
+          <el-icon><Pointer /></el-icon>
+          {{ videoData.likes_count }}
         </button>
         <button @click="handleCollect" :class="{ active: isCollected }">
-          ⭐ 收藏
+          <el-icon><Star /></el-icon>
+          收藏
         </button>
       </div>
       <div class="description">
@@ -52,6 +54,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import service from '@/api/user'
+import { Pointer, Star } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const videoId = route.params.id

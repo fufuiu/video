@@ -7,6 +7,7 @@
           v-model="commentText" 
           placeholder="发一条友善的评论" 
           @keyup.enter="handleAddComment" 
+          aria-label="评论内容"
         />
         <el-button 
           type="primary" 
@@ -29,7 +30,8 @@
           </div>
           <div class="comment-text">{{ comment.text }}</div>
           <div class="comment-actions">
-            <button 
+            <button
+              type="button"
               class="action-btn like-btn" 
               :class="{ 'liked': comment.isLiked }" 
               @click="$emit('toggle-comment-like', comment)"
@@ -41,7 +43,7 @@
               </el-icon>
               <span class="like-count">{{ formatLikeCount(comment.likes) }}</span>
             </button>
-            <button class="action-btn reply-btn" @click="$emit('reply-comment', comment)">
+            <button type="button" class="action-btn reply-btn" @click="$emit('reply-comment', comment)">
               <el-icon><ChatDotRound /></el-icon>
               <span>回复</span>
             </button>
@@ -111,8 +113,8 @@ const formatLikeCount = (count) => {
 }
 
 .comment-form .el-input :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #272a34;
+  border: 1px solid #454957;
   box-shadow: none;
   border-radius: 20px;
 }
@@ -122,17 +124,17 @@ const formatLikeCount = (count) => {
 }
 
 .comment-form .el-input :deep(.el-input__inner::placeholder) {
-  color: rgba(255, 255, 255, 0.4);
+  color: #a7aab5;
 }
 
 .comment-form .el-button {
   border-radius: 20px;
-  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%);
+  background: #00a1d6;
   border: none;
 }
 
 .comment-form .el-button:hover {
-  background: linear-gradient(135deg, #00b5e5 0%, #00c8f8 100%);
+  background: #00b5e5;
 }
 
 .comment-list {
@@ -211,9 +213,9 @@ const formatLikeCount = (count) => {
   gap: 4px;
   padding: 6px 12px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #d6d8df;
+  background: #252832;
+  border: 1px solid #40434f;
   border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -221,10 +223,15 @@ const formatLikeCount = (count) => {
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.9);
+  background: #323540;
+  border-color: #5b5f6d;
+  color: #fff;
   transform: translateY(-1px);
+}
+
+.action-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .action-btn:active {

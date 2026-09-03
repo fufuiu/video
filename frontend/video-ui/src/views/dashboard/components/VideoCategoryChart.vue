@@ -22,18 +22,18 @@ const props = defineProps({
 const chartRef = ref(null);
 let chartInstance = null;
 
-// 渐变色彩方案
+// 克制的纯色色板，避免统计图出现模板化渐变
 const colorPalette = [
-  ['#667eea', '#764ba2'],
-  ['#f093fb', '#f5576c'],
-  ['#4facfe', '#00f2fe'],
-  ['#43e97b', '#38f9d7'],
-  ['#fa709a', '#fee140'],
-  ['#30cfd0', '#330867'],
-  ['#a8edea', '#fed6e3'],
-  ['#ff9a9e', '#fecfef'],
-  ['#ffecd2', '#fcb69f'],
-  ['#ff6e7f', '#bfe9ff']
+  '#4f46e5',
+  '#0ea5e9',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+  '#14b8a6',
+  '#64748b',
+  '#ec4899',
+  '#6366f1'
 ];
 
 const initChart = () => {
@@ -46,10 +46,7 @@ const initChart = () => {
     value: item.count,
     name: item.category,
     itemStyle: {
-      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: colorPalette[index % colorPalette.length][0] },
-        { offset: 1, color: colorPalette[index % colorPalette.length][1] }
-      ])
+      color: colorPalette[index % colorPalette.length]
     }
   }));
   
@@ -124,10 +121,7 @@ const updateChart = () => {
     value: item.count,
     name: item.category,
     itemStyle: {
-      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: colorPalette[index % colorPalette.length][0] },
-        { offset: 1, color: colorPalette[index % colorPalette.length][1] }
-      ])
+      color: colorPalette[index % colorPalette.length]
     }
   }));
   

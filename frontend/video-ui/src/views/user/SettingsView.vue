@@ -892,7 +892,7 @@ const removeDevice = async (device) => {
 }
 
 .sidebar-item.active {
-  background: linear-gradient(90deg, #e6f7ff 0%, transparent 100%);
+  background: #e6f7ff;
   color: #1890ff;
   font-weight: 500;
 }
@@ -1016,52 +1016,52 @@ const removeDevice = async (device) => {
 }
 
 .card-icon.system {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: #fff;
 }
 
 .card-icon.interaction {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: #f093fb;
   color: #fff;
 }
 
 .card-icon.message {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: #4facfe;
   color: #fff;
 }
 
 .card-icon.email {
-  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  background: #43e97b;
   color: #fff;
 }
 
 .card-icon.follow {
-  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+  background: #fa709a;
   color: #fff;
 }
 
 .card-icon.privacy {
-  background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
+  background: #30cfd0;
   color: #fff;
 }
 
 .card-icon.playback {
-  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  background: #a8edea;
   color: #333;
 }
 
 .card-icon.interface {
-  background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  background: #ffecd2;
   color: #333;
 }
 
 .card-icon.security {
-  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+  background: #ff9a9e;
   color: #333;
 }
 
 .card-icon.data {
-  background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%);
+  background: #fbc2eb;
   color: #333;
 }
 

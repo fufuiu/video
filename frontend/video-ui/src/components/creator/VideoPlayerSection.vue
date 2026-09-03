@@ -1,7 +1,7 @@
 <template>
   <div class="video-player-section">
     <!-- 视频播放器 -->
-    <div class="video-player" @click="handleVideoAreaClick">
+    <div class="video-player">
       <div ref="videoContainer" class="video-container"></div>
       <div
         v-if="hasVideo && currentPreviewSubtitle"
@@ -24,7 +24,7 @@
           {{ currentPreviewSubtitle.translation }}
         </div>
       </div>
-      <div v-if="!hasVideo" class="video-empty-overlay">
+      <button v-if="!hasVideo" type="button" class="video-empty-overlay" aria-label="选择视频" @click="handleVideoAreaClick">
         <div class="empty-card">
           <div class="empty-icon">
             <el-icon><UploadFilled /></el-icon>
@@ -33,7 +33,7 @@
           <div class="empty-subtitle">上传本地视频或选择已上传的视频</div>
           <div class="empty-tip">点击开始</div>
         </div>
-      </div>
+      </button>
       <input
         ref="videoFileInput"
         type="file"
@@ -51,16 +51,16 @@
       :close-on-click-modal="false"
     >
       <div class="video-select-options">
-        <div class="select-option" @click="selectLocalVideo">
-          <div class="option-icon">📁</div>
+        <button type="button" class="select-option" @click="selectLocalVideo">
+          <el-icon class="option-icon"><FolderOpened /></el-icon>
           <div class="option-title">上传本地视频</div>
           <div class="option-desc">从电脑选择视频文件</div>
-        </div>
-        <div class="select-option" @click="selectUploadedVideo">
-          <div class="option-icon">☁️</div>
+        </button>
+        <button type="button" class="select-option" @click="selectUploadedVideo">
+          <el-icon class="option-icon"><Cloudy /></el-icon>
           <div class="option-title">选择已上传视频</div>
           <div class="option-desc">从已上传的视频中选择</div>
-        </div>
+        </button>
       </div>
     </el-dialog>
 
@@ -79,11 +79,13 @@
           style="margin-bottom: 16px"
         />
         <div v-loading="loadingVideos" class="video-items">
-          <div
+          <button
+            type="button"
             v-for="video in filteredUploadedVideos"
             :key="video.id"
             class="video-item"
             :class="{ selected: selectedUploadedVideoId === video.id }"
+            :aria-pressed="selectedUploadedVideoId === video.id"
             @click="selectedUploadedVideoId = video.id"
           >
             <img :src="video.thumbnail || '/default-thumbnail.png'" class="video-thumbnail" />
@@ -94,7 +96,7 @@
                 <span>{{ video.status === 'published' ? '已发布' : '草稿' }}</span>
               </div>
             </div>
-          </div>
+          </button>
           <div v-if="!loadingVideos && filteredUploadedVideos.length === 0" class="empty-hint">
             暂无视频
           </div>
@@ -114,12 +116,12 @@
         <!-- 标签栏 -->
         <div class="editor-tabs">
           <div class="tabs-left">
-            <div class="tab-btn" :class="{ active: activeTab === 'subtitle' }" @click="$emit('update:activeTab', 'subtitle')">
-              <i class="icon">🎨</i> 样式
-            </div>
-            <div class="tab-btn" :class="{ active: activeTab === 'tool' }" @click="$emit('update:activeTab', 'tool')">
-              <i class="icon">✂️</i> 工具
-            </div>
+            <button type="button" role="tab" class="tab-btn" :class="{ active: activeTab === 'subtitle' }" :aria-selected="activeTab === 'subtitle'" @click="$emit('update:activeTab', 'subtitle')">
+              <el-icon class="icon"><Brush /></el-icon> 样式
+            </button>
+            <button type="button" role="tab" class="tab-btn" :class="{ active: activeTab === 'tool' }" :aria-selected="activeTab === 'tool'" @click="$emit('update:activeTab', 'tool')">
+              <el-icon class="icon"><Scissor /></el-icon> 工具
+            </button>
           </div>
         </div>
 
@@ -219,8 +221,8 @@
           <!-- 第一行：导入文件 -->
           <div class="control-row">
             <span class="row-label">导入文件:</span>
-            <el-button size="small" @click="handleImportSubtitle">📤 导入字幕</el-button>
-            <el-button size="small" :disabled="!hasSubtitles" @click="handleExportSubtitle">📥 导出</el-button>
+            <el-button size="small" @click="handleImportSubtitle"><el-icon><Upload /></el-icon>导入字幕</el-button>
+            <el-button size="small" :disabled="!hasSubtitles" @click="handleExportSubtitle"><el-icon><Download /></el-icon>导出</el-button>
           </div>
 
           <!-- 第二行：时间偏移 -->
@@ -265,9 +267,10 @@
     </div>
 
     <!-- 收起按钮 -->
-    <div class="collapse-icon-bar" @click="$emit('toggle-panel')">
-      <i>{{ isPanelCollapsed ? '▼ 展开' : '▲ 收起' }}</i>
-    </div>
+    <button type="button" class="collapse-icon-bar" :aria-expanded="!isPanelCollapsed" @click="$emit('toggle-panel')">
+      <el-icon><ArrowDown v-if="isPanelCollapsed" /><ArrowUp v-else /></el-icon>
+      <span>{{ isPanelCollapsed ? '展开' : '收起' }}</span>
+    </button>
 
     <input
       ref="importFileInput"
@@ -282,7 +285,17 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue'
 import Artplayer from 'artplayer'
-import { UploadFilled } from '@element-plus/icons-vue'
+import {
+  ArrowDown,
+  ArrowUp,
+  Brush,
+  Cloudy,
+  Download,
+  FolderOpened,
+  Scissor,
+  Upload,
+  UploadFilled
+} from '@element-plus/icons-vue'
 import { getMyVideos } from '@/api/video'
 import { ElMessage } from 'element-plus'
 import 'animate.css'
@@ -995,8 +1008,12 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(800px 300px at 50% 20%, rgba(107, 70, 193, 0.25) 0%, rgba(0, 0, 0, 0) 60%), linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0));
+  background: rgba(18, 16, 28, 0.98);
   cursor: pointer;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
 }
 
 .empty-card {
@@ -1067,6 +1084,7 @@ defineExpose({
   .tab-btn {
     padding: 6px 12px;
     background: transparent;
+    border: 0;
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
@@ -1122,6 +1140,10 @@ defineExpose({
 }
 
 .collapse-icon-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   background: #1a1a1a;
   border-top: 1px solid #2a2a2a;
   padding: 6px 16px;
@@ -1131,15 +1153,16 @@ defineExpose({
   font-size: 12px;
   user-select: none;
   transition: all 0.2s;
+  width: 100%;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
   
   &:hover {
     background: #2a2a2a;
     color: #fff;
   }
   
-  i {
-    display: inline-block;
-  }
 }
 
 .control-panel {
@@ -1577,6 +1600,7 @@ defineExpose({
   cursor: pointer;
   transition: all 0.3s;
   text-align: center;
+  font: inherit;
 
   &:hover {
     border-color: #6b46c1;
@@ -1640,6 +1664,9 @@ defineExpose({
     background: #2a2a2a;
     cursor: pointer;
     transition: all 0.2s;
+    width: 100%;
+    text-align: left;
+    font: inherit;
 
     &:hover {
       border-color: #4a4a4a;

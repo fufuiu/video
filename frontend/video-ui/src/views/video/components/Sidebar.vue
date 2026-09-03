@@ -1,11 +1,13 @@
 <template>
-  <div class="sidebar-wrapper" :class="{ open: show }">
-    <div class="comment-panel" v-show="show" @click.stop>
+  <div class="sidebar-wrapper" :class="{ open: show }" :aria-hidden="!show">
+    <div class="comment-panel" v-show="show" role="dialog" aria-label="视频信息与评论" @click.stop>
       <div class="panel-header">
-        <div class="panel-tabs">
+        <div class="panel-tabs" role="tablist" aria-label="侧栏内容">
           <button 
             class="tab-btn" 
             :class="{ active: activeTab === 'user' }" 
+            role="tab"
+            :aria-selected="activeTab === 'user'"
             @click.stop="$emit('update:activeTab', 'user')"
           >
             作者
@@ -13,12 +15,14 @@
           <button 
             class="tab-btn" 
             :class="{ active: activeTab === 'comments' }" 
+            role="tab"
+            :aria-selected="activeTab === 'comments'"
             @click.stop="$emit('update:activeTab', 'comments')"
           >
             评论 {{ commentCount }}
           </button>
         </div>
-        <button class="close-btn" @click="$emit('close')">
+        <button class="close-btn" aria-label="关闭侧栏" title="关闭（Esc）" @click="$emit('close')">
           <el-icon><Close /></el-icon>
         </button>
       </div>
@@ -100,8 +104,7 @@ defineEmits([
   position: relative;
   width: 460px;
   height: 100%;
-  background: linear-gradient(135deg, rgba(20, 25, 35, 0.98) 0%, rgba(30, 35, 50, 0.98) 100%);
-  backdrop-filter: blur(20px);
+  background: #171922;
   z-index: 1;
   display: flex;
   flex-direction: column;
@@ -132,8 +135,8 @@ defineEmits([
 .tab-btn {
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid #3b3e49;
+  background: #252832;
   color: rgba(255, 255, 255, 0.85);
   font-size: 13px;
   cursor: pointer;
@@ -141,21 +144,21 @@ defineEmits([
 }
 
 .tab-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: #30333e;
   color: #fff;
 }
 
 .tab-btn.active {
-  background: rgba(0, 161, 214, 0.25);
-  border-color: rgba(0, 161, 214, 0.35);
+  background: #006f94;
+  border-color: #21b7e8;
   color: #fff;
 }
 
 .close-btn {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border: none;
-  background: rgba(255, 255, 255, 0.1);
+  background: #2b2e38;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -166,13 +169,28 @@ defineEmits([
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: #3a3d48;
   color: #fff;
 }
 
+.tab-btn:focus-visible,
+.close-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
 @media (max-width: 768px) {
+  .sidebar-wrapper {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 220;
+    pointer-events: none;
+    transition: none;
+  }
+
   .sidebar-wrapper.open {
     width: 100%;
+    pointer-events: auto;
   }
   
   .comment-panel {
