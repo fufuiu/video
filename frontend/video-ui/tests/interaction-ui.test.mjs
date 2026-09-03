@@ -93,6 +93,15 @@ test('protected creator navigation keeps token and user store in sync', async ()
   assert.match(home, /if \(getToken\(\)\) \{[\s\S]*\/user\/dashboard\/create/);
 });
 
+test('login form exposes validation rules used by its template', async () => {
+  const auth = await read('components/user/AuthForm.vue');
+
+  assert.match(auth, /const loginRules = \{/);
+  assert.match(auth, /:rules="loginRules"/);
+  assert.match(auth, /username: \[[\s\S]*请输入用户名或邮箱/);
+  assert.match(auth, /password: \[[\s\S]*请输入密码/);
+});
+
 test('profile username is a read-only login identifier', async () => {
   const profile = await read('views/user/ProfileView.vue');
 

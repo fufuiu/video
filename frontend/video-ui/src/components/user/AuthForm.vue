@@ -395,6 +395,19 @@ const loginForm = reactive({
   captcha_value: ''
 });
 
+// 登录表单验证规则
+const loginRules = {
+  username: [
+    { required: true, message: '请输入用户名或邮箱', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' }
+  ],
+  captcha_value: [
+    { required: true, message: '请输入验证码', trigger: 'blur' }
+  ]
+};
+
 // 验证码相关
 const captchaData = reactive({
   show: false,
