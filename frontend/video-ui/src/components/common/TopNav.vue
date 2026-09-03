@@ -3,10 +3,10 @@
     <div class="nav-wrapper">
       <!-- 左侧：Logo -->
       <div class="nav-left">
-        <div class="logo" @click="goHome">
-          <span class="logo-icon">📺</span>
+        <button type="button" class="logo" aria-label="返回首页" @click="goHome">
+          <el-icon class="logo-icon"><VideoCamera /></el-icon>
           <span class="logo-text">MindPalette</span>
-        </div>
+        </button>
       </div>
 
       <!-- 中间：搜索框 -->
@@ -16,12 +16,13 @@
             v-model="searchQuery"
             type="text"
             class="search-input"
+            aria-label="搜索视频"
             placeholder="搜索你感兴趣的视频"
             @keyup.enter="handleSearch"
             @focus="searchFocused = true"
             @blur="searchFocused = false"
           />
-          <button class="search-button" @click="handleSearch">
+          <button type="button" class="search-button" aria-label="提交搜索" @click="handleSearch">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M14 14L11.1 11.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -34,13 +35,13 @@
       <div class="nav-right">
         <!-- 未登录状态 -->
         <template v-if="!isLoggedIn">
-          <button class="btn-secondary" @click="goLogin">登录</button>
+          <button type="button" class="btn-secondary" @click="goLogin">登录</button>
         </template>
 
         <!-- 已登录状态 -->
         <template v-else>
           <!-- 上传按钮 -->
-          <button class="btn-upload" @click="goUpload">
+          <button type="button" class="btn-upload" @click="goUpload">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M9 3.75V14.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <path d="M5.25 7.5L9 3.75L12.75 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -51,7 +52,7 @@
 
           <!-- 消息按钮 -->
           <div class="notification-wrapper" v-click-outside="closeNotificationMenu">
-            <button class="btn-notification" @click="toggleNotificationMenu">
+            <button type="button" class="btn-notification" :aria-expanded="showNotificationMenu" aria-haspopup="true" @click="toggleNotificationMenu">
               <el-icon :size="16"><Bell /></el-icon>
               <span>消息</span>
               <span v-if="unreadCount > 0" class="btn-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
@@ -66,7 +67,7 @@
                 </div>
                 
                 <div class="notification-list" v-if="recentNotifications.length > 0">
-                  <div 
+                  <button type="button"
                     v-for="notification in recentNotifications" 
                     :key="notification.id"
                     class="notification-item"
@@ -79,7 +80,7 @@
                       <div class="notification-item-desc">{{ notification.content }}</div>
                       <div class="notification-item-time">{{ formatNotificationTime(notification.created_at) }}</div>
                     </div>
-                  </div>
+                  </button>
                 </div>
                 
                 <div class="notification-empty" v-else>
@@ -88,15 +89,17 @@
                 </div>
                 
                 <div class="notification-footer">
-                  <span @click="goMessages">查看全部消息</span>
+                  <button type="button" @click="goMessages">查看全部消息</button>
                 </div>
               </div>
             </transition>
           </div>
 
           <!-- 用户菜单 -->
-          <div class="user-menu" @click="toggleUserMenu" v-click-outside="closeUserMenu">
+          <div class="user-menu" v-click-outside="closeUserMenu">
+            <button type="button" class="avatar-button" :aria-expanded="showUserMenu" aria-haspopup="true" aria-label="打开用户菜单" @click="toggleUserMenu">
             <img :src="userAvatar" alt="头像" class="avatar" />
+            </button>
             
             <!-- 下拉菜单 -->
             <transition name="dropdown">
@@ -111,39 +114,39 @@
                 
                 <div class="dropdown-divider"></div>
                 
-                <div class="dropdown-item" @click="goProfile">
+                <button type="button" class="dropdown-item" @click="goProfile">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M13.3333 14V12.6667C13.3333 11.9594 13.0524 11.2811 12.5523 10.781C12.0522 10.281 11.3739 10 10.6667 10H5.33333C4.62609 10 3.94781 10.281 3.44772 10.781C2.94762 11.2811 2.66667 11.9594 2.66667 12.6667V14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M8 7.33333C9.47276 7.33333 10.6667 6.13943 10.6667 4.66667C10.6667 3.19391 9.47276 2 8 2C6.52724 2 5.33333 3.19391 5.33333 4.66667C5.33333 6.13943 6.52724 7.33333 8 7.33333Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <span>个人主页</span>
-                </div>
+                </button>
                 
-                <div class="dropdown-item" @click="goMyVideos">
+                <button type="button" class="dropdown-item" @click="goMyVideos">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M14.6667 7.38667V4.66667C14.6667 3.19391 13.4728 2 12 2H4C2.52724 2 1.33333 3.19391 1.33333 4.66667V11.3333C1.33333 12.8061 2.52724 14 4 14H7.38" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M10.6667 12L12.6667 14L15.3333 10.6667" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <span>作品管理</span>
-                </div>
+                </button>
                 
-                <div class="dropdown-item" @click="goCollections">
+                <button type="button" class="dropdown-item" @click="goCollections">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M8 2L9.545 5.13L13 5.635L10.5 8.07L11.09 11.51L8 9.885L4.91 11.51L5.5 8.07L3 5.635L6.455 5.13L8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <span>我的收藏</span>
-                </div>
+                </button>
                 
                 <div class="dropdown-divider"></div>
                 
-                <div class="dropdown-item" @click="handleLogout">
+                <button type="button" class="dropdown-item" @click="handleLogout">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M6 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V3.33333C2 2.97971 2.14048 2.64057 2.39052 2.39052C2.64057 2.14048 2.97971 2 3.33333 2H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M10.6667 11.3333L14 8L10.6667 4.66667" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M14 8H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <span>退出登录</span>
-                </div>
+                </button>
               </div>
             </transition>
           </div>
@@ -158,7 +161,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useNotificationStore } from '@/store/notification'
-import { Bell } from '@element-plus/icons-vue'
+import { Bell, VideoCamera } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -318,8 +321,8 @@ onMounted(() => {
   position: sticky;
   top: 0;
   z-index: 1000;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--color-surface, #ffffff);
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
@@ -343,6 +346,10 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
   user-select: none;
   transition: opacity 0.2s;
 }
@@ -359,7 +366,7 @@ onMounted(() => {
 .logo-text {
   font-size: 20px;
   font-weight: 700;
-  color: #3b82f6;
+  color: var(--color-primary, #2563eb);
   letter-spacing: -0.5px;
 }
 
@@ -377,7 +384,7 @@ onMounted(() => {
   background: #f3f4f6;
   border-radius: 8px;
   overflow: hidden;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   border: 1px solid transparent;
 }
 
@@ -387,7 +394,7 @@ onMounted(() => {
 
 .search-container:focus-within {
   background: #ffffff;
-  border-color: #3b82f6;
+  border-color: var(--color-primary, #2563eb);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
@@ -418,11 +425,11 @@ onMounted(() => {
   background: transparent;
   color: #6b7280;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: color 0.2s ease, background-color 0.2s ease;
 }
 
 .search-button:hover {
-  color: #3b82f6;
+  color: var(--color-primary, #2563eb);
 }
 
 /* 右侧操作区 */
@@ -435,20 +442,20 @@ onMounted(() => {
 
 /* 按钮样式 - Dashboard风格 */
 .btn-secondary {
-  height: 36px;
+  min-height: 44px;
   padding: 0 24px;
-  border: 1px solid #3b82f6;
+  border: 1px solid var(--color-primary, #2563eb);
   border-radius: 8px;
   background: #ffffff;
-  color: #3b82f6;
+  color: var(--color-primary, #2563eb);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .btn-secondary:hover {
-  background: #3b82f6;
+  background: var(--color-primary, #2563eb);
   color: #ffffff;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
@@ -458,16 +465,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  min-height: 44px;
   padding: 0 20px;
   border: none;
   border-radius: 8px;
-  background: #3b82f6;
+  background: var(--color-primary, #2563eb);
   color: #ffffff;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .btn-upload:hover {
@@ -487,16 +494,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 36px;
+  min-height: 44px;
   padding: 0 16px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  background: var(--color-primary, #2563eb);
   color: white;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
@@ -623,6 +630,11 @@ onMounted(() => {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 16px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
   cursor: pointer;
   transition: background 0.2s;
   border-bottom: 1px solid #f3f4f6;
@@ -705,30 +717,49 @@ onMounted(() => {
   background: #f9fafb;
 }
 
-.notification-footer span {
+.notification-footer button {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  font: inherit;
   font-size: 13px;
-  color: #3b82f6;
+  color: var(--color-primary, #2563eb);
   cursor: pointer;
   font-weight: 500;
 }
 
-.notification-footer span:hover {
+.notification-item:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: -2px;
+}
+
+.notification-footer button:hover {
   text-decoration: underline;
 }
 
 /* 用户菜单 */
 .user-menu {
   position: relative;
-  cursor: pointer;
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid #e5e7eb;
-  transition: all 0.3s;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.avatar-button {
+  width: 44px;
+  height: 44px;
+  padding: 4px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
 }
 
 .user-menu:hover .avatar {
@@ -755,7 +786,7 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 16px;
-  background: linear-gradient(135deg, #eff6ff 0%, #f3f4f6 100%);
+  background: #eff6ff;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -799,12 +830,25 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
   color: #374151;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dropdown-item:focus-visible,
+.avatar-button:focus-visible,
+.logo:focus-visible,
+.notification-footer button:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 2px;
 }
 
 .dropdown-item:hover {
@@ -866,7 +910,7 @@ onMounted(() => {
   }
 
   .search-input {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .btn-upload span {
@@ -875,15 +919,15 @@ onMounted(() => {
 
   .btn-upload {
     width: 40px;
-    height: 40px;
+    min-height: 44px;
     padding: 0;
     justify-content: center;
     border-radius: 50%;
   }
 
   .icon-button {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
 
   .dropdown-menu {
@@ -897,22 +941,22 @@ onMounted(() => {
   }
 
   .search-container {
-    height: 36px;
+    height: 44px;
   }
 
   .search-input {
-    height: 36px;
+    height: 44px;
     padding: 0 12px;
-    font-size: 12px;
+    font-size: 14px;
   }
 
   .search-button {
-    width: 40px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
 
   .btn-secondary {
-    height: 32px;
+    min-height: 44px;
     padding: 0 16px;
     font-size: 13px;
   }

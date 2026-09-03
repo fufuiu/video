@@ -9,7 +9,15 @@
   
   <section id="content" :class="{ 'sidebar-hide': isSidebarCollapsed }">
     <nav>
-      <el-icon class="bx bx-menu" @click="toggleSidebar"><Fold /></el-icon>
+      <div class="nav-left">
+        <button type="button" class="menu-toggle" aria-label="展开或收起侧边栏" @click="toggleSidebar">
+          <el-icon><Fold /></el-icon>
+        </button>
+        <button type="button" class="nav-back-btn" @click="goHome">
+          <el-icon><ArrowLeft /></el-icon>
+          <span>返回首页</span>
+        </button>
+      </div>
       
       <div class="nav-right">
         <a href="#" class="upload-btn" @click.prevent="goToCreator">
@@ -96,7 +104,7 @@ import { useNotificationStore } from '@/store/notification';
 import UserSidebar from '@/layout/user/UserSidebar.vue';
 import { 
   Refresh, FullScreen, Fold, Expand, 
-  Search, Bell, User, Setting, SwitchButton, Upload, Medal
+  Search, Bell, User, Setting, SwitchButton, Upload, Medal, ArrowLeft
 } from '@element-plus/icons-vue';
 
 const userStore = useUserStore();
@@ -190,6 +198,10 @@ const navigateTo = (path) => {
   showProfileMenu.value = false;
 };
 
+const goHome = () => {
+  router.push('/home');
+};
+
 // 跳转到创作者中心
 const goToCreator = () => {
   router.push('/user/dashboard/create');
@@ -249,12 +261,12 @@ onUnmounted(() => {
 <style>
 /* 全局变量 */
 :root {
-  --light: #F9F9F9;
-  --blue: #3C91E6;
+  --light: var(--color-surface, #ffffff);
+  --blue: var(--color-primary, #2563eb);
   --light-blue: #CFE8FF;
   --grey: #eee;
   --dark-grey: #AAAAAA;
-  --dark: #342E37;
+  --dark: var(--color-text, #1f2937);
   --red: #DB504A;
   --yellow: #FFCE26;
   --light-yellow: #FFF2C6;
@@ -265,14 +277,14 @@ onUnmounted(() => {
 html, body {
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow-x: hidden;
   height: 100%;
   width: 100%;
 }
 
 body {
-  background: var(--grey);
-  font-family: 'Lato', sans-serif;
+  background: var(--color-background, var(--grey));
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
 }
 </style>
 
@@ -310,10 +322,50 @@ nav {
   flex-shrink: 0;
 }
 
-nav .bx.bx-menu {
-  cursor: pointer;
-  font-size: 24px;
+nav .nav-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+nav .menu-toggle,
+nav .nav-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  border: 1px solid #e3e5e7;
+  border-radius: 8px;
+  background: #fff;
   color: var(--dark);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+
+nav .menu-toggle {
+  width: 38px;
+  padding: 0;
+  font-size: 20px;
+}
+
+nav .nav-back-btn {
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+nav .menu-toggle:hover,
+nav .nav-back-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: #f7fbff;
+}
+
+nav .menu-toggle:focus-visible,
+nav .nav-back-btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 nav .nav-right {
@@ -327,19 +379,20 @@ nav .nav-right .upload-btn {
   align-items: center;
   gap: 6px;
   padding: 8px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4f46e5;
   color: white;
   border-radius: 8px;
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: none;
 }
 
 nav .nav-right .upload-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  background: #4338ca;
+  transform: translateY(-1px);
+  box-shadow: none;
 }
 
 nav .nav-right .upload-btn .el-icon {
@@ -351,19 +404,21 @@ nav .nav-right .vip-btn {
   align-items: center;
   gap: 4px;
   padding: 8px 16px;
-  background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
-  color: #333;
+  background: #fff;
+  color: #b45309;
+  border: 1px solid #fcd34d;
   border-radius: 8px;
   text-decoration: none;
   font-size: 14px;
   font-weight: 700;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
+  box-shadow: none;
 }
 
 nav .nav-right .vip-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
+  background: #fffbeb;
+  transform: translateY(-1px);
+  box-shadow: none;
 }
 
 nav .nav-right .vip-btn .el-icon {
@@ -376,20 +431,24 @@ nav .nav-right .notification-btn {
   align-items: center;
   gap: 4px;
   padding: 8px 16px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: white;
+  background: #fff;
+  color: #374151;
+  border: 1px solid #e3e5e7;
   border-radius: 8px;
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  box-shadow: none;
   position: relative;
 }
 
 nav .nav-right .notification-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+  border-color: #93c5fd;
+  background: #f8fafc;
+  color: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: none;
 }
 
 nav .nav-right .notification-btn .el-icon {
@@ -667,6 +726,15 @@ main::-webkit-scrollbar-thumb:hover {
   nav .nav-right .upload-btn span {
     display: none;
   }
+
+  nav .nav-back-btn span {
+    display: none;
+  }
+
+  nav .nav-back-btn {
+    width: 38px;
+    padding: 0;
+  }
   
   nav .nav-right .upload-btn {
     padding: 8px 12px;
@@ -681,4 +749,4 @@ main::-webkit-scrollbar-thumb:hover {
     padding: 16px;
   }
 }
-</style> 
+</style>

@@ -1,6 +1,14 @@
 <template>
   <div class="auth-container" :class="{ 'register-active': isRegisterActive, 'forgot-password-active': isForgotPasswordActive }">
+    <button type="button" class="auth-back-btn" aria-label="返回首页" @click="goHome">
+      <el-icon><ArrowLeft /></el-icon>
+      <span>返回首页</span>
+    </button>
     <div class="forms-container">
+      <div v-if="!isForgotPasswordActive" class="auth-mode-switch" role="tablist" aria-label="认证方式">
+        <button type="button" role="tab" :aria-selected="!isRegisterActive" @click="isRegisterActive = false">登录</button>
+        <button type="button" role="tab" :aria-selected="isRegisterActive" @click="isRegisterActive = true">注册</button>
+      </div>
       <div class="signin-signup">
         <!-- 登录表单 -->
         <el-form 
@@ -8,6 +16,8 @@
           :model="loginForm" 
           :rules="loginRules" 
           class="sign-in-form" 
+          v-show="!isRegisterActive && !isForgotPasswordActive"
+          :aria-hidden="isRegisterActive || isForgotPasswordActive"
           @submit.prevent="submitLoginForm"
           @keyup.enter="submitLoginForm"
         >
@@ -69,6 +79,8 @@
           :model="registerForm" 
           :rules="registerRules" 
           class="sign-up-form" 
+          v-show="isRegisterActive"
+          :aria-hidden="!isRegisterActive"
           @submit.prevent="submitRegisterForm"
           @keyup.enter="submitRegisterForm"
         >
@@ -150,6 +162,8 @@
           :model="forgotPasswordForm" 
           :rules="forgotPasswordRules" 
           class="forgot-password-form" 
+          v-show="isForgotPasswordActive"
+          :aria-hidden="!isForgotPasswordActive"
           @submit.prevent="handleForgotPassword"
           @keyup.enter="handleForgotPassword"
         >
@@ -301,6 +315,7 @@ import 'animate.css';
 
 const router = useRouter();
 const route = useRoute();
+const goHome = () => router.push('/home');
 const isRegisterActive = ref(false);
 const isForgotPasswordActive = ref(false);
 const loginFormRef = ref(null);
@@ -564,15 +579,22 @@ const submitLoginForm = async () => {
           localStorage.removeItem('remember_username');
         }
         
-        // 更新用户状态
-        try {
-          const userInfo = await getUserInfo();
-          userStore.loginAction(userInfo);
-        } catch (error) {
-          console.error('Failed to get user info after login:', error);
-          // 如果获取用户信息失败，但登录成功了，可以尝试用基本信息登录
-          userStore.loginAction({ username: loginForm.username });
+        // 更新用户状态。登录接口已经返回 user，优先使用它；详情接口失败时
+        // 也不能写入一个缺少 id 的“伪登录态”，否则守卫和导航会互相矛盾。
+        let userInfo = res.user;
+        if (!userInfo?.id) {
+          try {
+            userInfo = await getUserInfo();
+          } catch (error) {
+            removeToken();
+            throw error;
+          }
         }
+        if (!userInfo?.id) {
+          removeToken();
+          throw new Error('登录成功，但用户信息无效');
+        }
+        userStore.loginAction(userInfo);
         
         ElMessage.success('登录成功');
         
@@ -875,9 +897,40 @@ onMounted(() => {
 .auth-container {
   position: relative;
   width: 100%;
+  height: 100vh;
   min-height: 100vh;
   background-color: var(--el-bg-color);
   overflow: hidden;
+}
+
+.auth-back-btn {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.auth-back-btn:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+  transform: translateX(-2px);
+}
+
+.auth-back-btn:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
 }
 
 .forms-container {
@@ -1052,7 +1105,7 @@ onMounted(() => {
   top: -10%;
   right: 48%;
   transform: translateY(-50%);
-  background-image: linear-gradient(-45deg, var(--el-color-primary) 0%, var(--el-color-primary-light-3) 100%);
+  background-color: var(--el-color-primary);
   transition: transform 1.2s cubic-bezier(0.19, 1, 0.22, 1), right 1.2s cubic-bezier(0.19, 1, 0.22, 1), top 1.2s cubic-bezier(0.19, 1, 0.22, 1), left 1.2s cubic-bezier(0.19, 1, 0.22, 1);
   border-radius: 50%;
   z-index: 6;
@@ -1087,7 +1140,7 @@ onMounted(() => {
 .circle {
   position: absolute;
   border-radius: 50%;
-  background: linear-gradient(-45deg, var(--el-color-primary-light-5) 0%, var(--el-color-primary-light-7) 100%);
+  background: var(--el-color-primary-light-7);
   opacity: 0.3;
 }
 
@@ -1407,6 +1460,11 @@ onMounted(() => {
 
 /* 响应式设计 */
 @media (max-width: 870px) {
+  .auth-back-btn {
+    top: 16px;
+    left: 16px;
+  }
+
   .auth-container {
     min-height: 800px;
     height: 100vh;
@@ -1673,6 +1731,289 @@ onMounted(() => {
 /* 添加动画持续时间自定义 */
 .animate__animated {
   --animate-duration: 0.6s;
+}
+
+/* 平面化认证布局：用版式、边框和留白建立层级，不依赖光效装饰 */
+.circles,
+.panel-illustration {
+  display: none;
+}
+
+/* 移动端采用单列认证卡片，保证表单顺序、焦点与滚动空间可预期 */
+.auth-mode-switch {
+  display: none;
+}
+
+@media (max-width: 870px) {
+  .auth-container {
+    height: auto;
+    min-height: 100dvh;
+    overflow-y: auto;
+    padding: 0;
+    background: var(--color-background, #f6f8fb);
+  }
+
+  .auth-container::before,
+  .panels-container {
+    display: none;
+  }
+
+  .forms-container {
+    position: relative;
+    inset: auto;
+    height: auto;
+    min-height: 100dvh;
+    padding: 84px 16px 32px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .auth-mode-switch {
+    position: absolute;
+    top: 48px;
+    left: 50%;
+    z-index: 2;
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    transform: translateX(-50%);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 999px;
+    background: var(--color-surface, #fff);
+  }
+
+  .auth-mode-switch button {
+    min-width: 72px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    color: var(--color-text-muted, #64748b);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .auth-mode-switch button[aria-selected="true"] {
+    color: #fff;
+    background: var(--color-primary, #2563eb);
+  }
+
+  .auth-mode-switch button:focus-visible {
+    outline: 2px solid var(--color-primary, #2563eb);
+    outline-offset: 2px;
+  }
+
+  .signin-signup,
+  .auth-container.register-active .signin-signup,
+  .auth-container.forgot-password-active .signin-signup {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    transform: none;
+    transition: none;
+    display: block;
+  }
+
+  .el-form,
+  .sign-in-form,
+  .sign-up-form,
+  .forgot-password-form {
+    position: relative;
+    width: min(100%, 460px);
+    max-width: 460px;
+    padding: 28px 24px 24px;
+    margin: 0 auto;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 20px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .title {
+    margin-bottom: 24px;
+    font-size: 2rem;
+  }
+
+  .auth-back-btn {
+    top: 16px;
+    left: 16px;
+  }
+
+  .el-form-item {
+    margin-bottom: 18px;
+  }
+
+  .el-form-item :deep(.el-input__wrapper),
+  .el-form-item :deep(.el-button) {
+    min-height: 48px;
+  }
+
+  .el-form-item :deep(.el-input__wrapper) {
+    border-radius: 12px;
+  }
+
+  .form-options {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .verification-code-wrapper {
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .verification-code-wrapper .send-code-btn {
+    width: auto;
+    min-width: 108px;
+  }
+}
+
+@media (max-width: 570px) {
+  .forms-container {
+    padding: 112px 12px 24px;
+  }
+
+  .el-form,
+  .sign-in-form,
+  .sign-up-form,
+  .forgot-password-form {
+    padding: 24px 16px 20px;
+    border-radius: 16px;
+  }
+
+  .verification-code-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .verification-code-wrapper .send-code-btn {
+    width: 100%;
+  }
+
+  .captcha-img-box {
+    width: 112px;
+  }
+}
+
+.panel .content,
+.bottom-panel .content {
+  text-shadow: none;
+}
+
+.el-form-item :deep(.el-input__wrapper) {
+  border: 1px solid var(--el-border-color);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.el-form-item :deep(.el-input__wrapper:hover) {
+  border-color: var(--el-color-primary-light-3);
+  transform: none;
+  box-shadow: none;
+}
+
+.el-form-item :deep(.el-input__wrapper.is-focus) {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 3px var(--el-color-primary-light-9);
+}
+
+.el-form-item :deep(.el-button),
+.verification-code-wrapper .send-code-btn,
+.btn-transparent {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.el-form-item :deep(.el-button:hover),
+.verification-code-wrapper .send-code-btn:hover:not(:disabled),
+.btn-transparent:hover {
+  transform: translateY(-1px);
+  box-shadow: none;
+}
+
+.sign-up-form .title {
+  margin-bottom: 16px;
+  font-size: 2rem;
+}
+
+.sign-up-form .el-form-item {
+  margin-bottom: 14px;
+}
+
+.sign-up-form .el-form-item :deep(.el-input__wrapper),
+.sign-up-form .captcha-img-box {
+  height: 46px;
+}
+
+.sign-up-form .el-form-item :deep(.el-button) {
+  height: 46px;
+  margin-top: 4px;
+}
+
+.signin-signup,
+.sign-in-form,
+.sign-up-form,
+.forgot-password-form,
+.panel .content {
+  transition-duration: 0.35s;
+}
+
+@media (min-width: 871px) {
+  .auth-container::before {
+    width: 50%;
+    height: 100%;
+    top: 0;
+    right: 50%;
+    bottom: auto;
+    left: auto;
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+    transition: right 0.35s ease;
+    will-change: right;
+  }
+
+  .auth-container.register-active::before {
+    right: 0;
+    transform: none;
+  }
+
+  .auth-container.forgot-password-active::before {
+    top: 0;
+    right: 50%;
+    bottom: auto;
+    left: auto;
+    transform: none;
+  }
+}
+
+@media (max-width: 870px) {
+  .auth-container::before {
+    width: 100%;
+    height: 30%;
+    top: 0;
+    right: auto;
+    bottom: auto;
+    left: 0;
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+    transition: top 0.35s ease;
+    will-change: top;
+  }
+
+  .auth-container.register-active::before,
+  .auth-container.forgot-password-active::before {
+    top: 70%;
+    right: auto;
+    bottom: auto;
+    left: 0;
+    transform: none;
+  }
 }
 
 /* 修复图标和输入框之间的间距 */

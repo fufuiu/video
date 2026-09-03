@@ -85,11 +85,7 @@ const initChart = () => {
         barWidth: '45%',
         data: counts,
         itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#60a5fa' },
-            { offset: 0.5, color: '#3b82f6' },
-            { offset: 1, color: '#2563eb' }
-          ]),
+          color: '#3b82f6',
           borderRadius: [8, 8, 0, 0],
           shadowColor: 'rgba(59, 130, 246, 0.3)',
           shadowBlur: 10,

@@ -1125,7 +1125,6 @@ onBeforeUnmount(() => {
   right: 0;
   margin-top: 8px;
   background: rgba(0,0,0,0.8);
-  backdrop-filter: blur(12px);
   border-radius: 8px;
   padding: 8px 0;
   min-width: 140px;
@@ -1238,7 +1237,6 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(10px);
 }
 
 .action-icon svg {
@@ -1363,7 +1361,6 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   color: #fff;
   font-size: 12px;
-  backdrop-filter: blur(4px);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -1385,7 +1382,6 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 8px 14px;
   background: rgba(255,255,255,0.15);
-  backdrop-filter: blur(8px);
   border: none;
   border-radius: 20px;
   color: #fff;
@@ -1406,8 +1402,7 @@ onBeforeUnmount(() => {
   position: relative;
   width: 460px;
   height: 100%;
-  background: linear-gradient(135deg, rgba(20, 25, 35, 0.98) 0%, rgba(30, 35, 50, 0.98) 100%);
-  backdrop-filter: blur(20px);
+  background: rgba(20, 25, 35, 0.98);
   z-index: 1;
   display: flex;
   flex-direction: column;
@@ -1551,7 +1546,7 @@ onBeforeUnmount(() => {
   bottom: 0;
   width: 100%;
   padding: 6px 8px;
-  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.6));
+  background: rgba(0, 0, 0, 0.58);
   color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
 }
@@ -1625,12 +1620,12 @@ onBeforeUnmount(() => {
 
 .comment-form .el-button {
   border-radius: 20px;
-  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%);
+  background: #00a1d6;
   border: none;
 }
 
 .comment-form .el-button:hover {
-  background: linear-gradient(135deg, #00b5e5 0%, #00c8f8 100%);
+  background: #00b5e5;
 }
 
 .comment-list {
@@ -1752,7 +1747,7 @@ onBeforeUnmount(() => {
 }
 
 :deep(.art-bottom) {
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.4) 0%, transparent 100%) !important;
+  background: rgba(0, 0, 0, 0.4) !important;
 }
 
 /* 上次看到提示框层级 */
@@ -1860,7 +1855,6 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 10px 16px;
   background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px);
   border-radius: 8px;
   color: #fff;
   font-size: 14px;
@@ -1932,8 +1926,7 @@ onBeforeUnmount(() => {
 
 /* 弹幕输入框容器 */
 .artplayer-plugin-danmuku .apd-emitter {
-  background: linear-gradient(135deg, rgba(30, 35, 50, 0.1) 0%, rgba(45, 50, 70, 0.1) 100%) !important;
-  backdrop-filter: blur(16px) !important;
+  background: rgba(30, 35, 50, 0.1) !important;
   border-radius: 24px !important;
   padding: 4px 4px 4px 12px !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -1995,7 +1988,7 @@ onBeforeUnmount(() => {
 
 /* 发送按钮 */
 .artplayer-plugin-danmuku .apd-send {
-  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%) !important;
+  background: #00a1d6 !important;
   color: #fff !important;
   border-radius: 20px !important;
   padding: 0 24px !important;
@@ -2015,7 +2008,7 @@ onBeforeUnmount(() => {
 }
 
 .artplayer-plugin-danmuku .apd-send:hover {
-  background: linear-gradient(135deg, #00b5e5 0%, #00c8f8 100%) !important;
+  background: #00b5e5 !important;
   transform: scale(1.02) !important;
   box-shadow: 0 4px 16px rgba(0, 161, 214, 0.5) !important;
 }
@@ -2034,12 +2027,11 @@ onBeforeUnmount(() => {
 /* 配置面板样式 */
 .artplayer-plugin-danmuku .apd-config-panel,
 .artplayer-plugin-danmuku .apd-style-panel {
-  backdrop-filter: blur(20px) !important;
 }
 
 .artplayer-plugin-danmuku .apd-config-panel .apd-config-panel-inner,
 .artplayer-plugin-danmuku .apd-style-panel .apd-style-panel-inner {
-  background: linear-gradient(135deg, rgba(25, 30, 45, 0.95) 0%, rgba(35, 40, 55, 0.95) 100%) !important;
+  background: rgba(25, 30, 45, 0.95) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 12px !important;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
@@ -2047,14 +2039,14 @@ onBeforeUnmount(() => {
 
 /* 滑块样式 */
 .artplayer-plugin-danmuku .apd-slider .apd-slider-dot {
-  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%) !important;
+  background: #00a1d6 !important;
   box-shadow: 0 2px 8px rgba(0, 161, 214, 0.4) !important;
   width: 14px !important;
   height: 14px !important;
 }
 
 .artplayer-plugin-danmuku .apd-slider .apd-slider-progress {
-  background: linear-gradient(90deg, #00a1d6 0%, #00b5e5 100%) !important;
+  background: #00a1d6 !important;
 }
 
 /* 颜色选择器 */

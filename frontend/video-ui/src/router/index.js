@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { getToken } from '@/utils/auth';
+import { useUserStore } from '@/store/user';
 import { getUserInfo } from '@/api/user';
 import { ElMessage } from 'element-plus';
 import NProgress from 'nprogress';
@@ -261,9 +262,27 @@ router.beforeEach(async (to, from, next) => {
   const requiresVip = to.matched.some(record => record.meta.requiresVip);
   
   if (requiresAuth || requiresAdmin || requiresSuperAdmin || requiresVip) {
-    const hasToken = getToken();
+    const hasToken = Boolean(getToken());
+    const userStore = useUserStore();
     
     if (hasToken) {
+      // 令 token 与 Pinia 保持一致。登录接口已经写入 token，但在用户信息
+      // 请求失败的旧流程中，Pinia 可能仍是未登录，导致页面状态与守卫判断分裂。
+      if (!userStore.isLoggedIn) {
+        try {
+          const userInfo = await getUserInfo();
+          if (userInfo?.id) {
+            userStore.loginAction(userInfo);
+          }
+        } catch (error) {
+          // 网络异常不阻断已有 token 的导航；只有明确的 401 才清理会话。
+          if (error.response?.status === 401) {
+            userStore.logoutAction();
+            next({ path: '/auth', query: { redirect: to.fullPath } });
+            return;
+          }
+        }
+      }
       // 如果需要超级管理员权限
       if (requiresSuperAdmin) {
         try {
@@ -331,6 +350,10 @@ router.beforeEach(async (to, from, next) => {
         }
       }
     } else {
+      // 防止 token 被过期拦截器清除后，顶部导航仍显示旧的 Pinia 登录态。
+      if (userStore.isLoggedIn) {
+        userStore.logoutAction();
+      }
       next({
         path: '/auth',
         query: { redirect: to.fullPath }

@@ -11,16 +11,16 @@
     
     <div class="video-description" :class="{ 'expanded': descriptionExpanded }">
       <span class="desc-text" ref="descTextRef">{{ videoData.description }}</span>
-      <span 
+      <button type="button"
         class="expand-btn" 
         v-if="showExpandBtn && !descriptionExpanded" 
         @click="descriptionExpanded = true"
-      >...展开</span>
-      <span 
+      >...展开</button>
+      <button type="button"
         class="collapse-btn" 
         v-if="descriptionExpanded" 
         @click="descriptionExpanded = false"
-      > 收起</span>
+      > 收起</button>
     </div>
     
     <div class="video-tags">
@@ -96,7 +96,8 @@ watch(() => props.videoData.description, checkDescOverflow, { immediate: true })
   position: absolute;
   left: 20px;
   bottom: 60px;
-  max-width: 30%;
+  width: min(560px, calc(100% - 100px));
+  max-width: 42%;
   z-index: 100;
   transition: opacity 0.3s, transform 0.3s;
   text-align: left;
@@ -133,8 +134,8 @@ watch(() => props.videoData.description, checkDescOverflow, { immediate: true })
 }
 
 .video-title {
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 600;
   color: #fff;
   margin: 0 0 8px 0;
   line-height: 1.5;
@@ -171,6 +172,9 @@ watch(() => props.videoData.description, checkDescOverflow, { immediate: true })
 
 .expand-btn,
 .collapse-btn {
+  border: 0;
+  padding: 6px 0;
+  background: transparent;
   color: #fff;
   cursor: pointer;
   font-size: 13px;
@@ -190,11 +194,11 @@ watch(() => props.videoData.description, checkDescOverflow, { immediate: true })
 
 .tag {
   padding: 4px 10px;
-  background: rgba(255,255,255,0.15);
+  background: #272932;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 4px;
   color: #fff;
   font-size: 12px;
-  backdrop-filter: blur(4px);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -214,19 +218,43 @@ watch(() => props.videoData.description, checkDescOverflow, { immediate: true })
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: rgba(255,255,255,0.15);
-  backdrop-filter: blur(8px);
-  border: none;
+  background: #272932;
+  border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 20px;
   color: #fff;
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.2s, border-color 0.2s;
   text-decoration: none;
 }
 
 .ai-btn:hover {
-  background: rgba(0, 161, 214, 0.6);
+  background: #006f94;
+  border-color: #21b7e8;
+}
+
+@media (max-width: 768px) {
+  .video-info-overlay {
+    left: 16px;
+    right: 76px;
+    bottom: max(52px, env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+  }
+
+  .video-title {
+    font-size: 16px;
+  }
+
+  .ai-actions {
+    flex-wrap: wrap;
+  }
+}
+
+.ai-btn:focus-visible,
+.creator-name:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .ai-btn svg {

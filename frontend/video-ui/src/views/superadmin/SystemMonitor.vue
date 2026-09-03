@@ -280,10 +280,7 @@ const getCpuChartOption = () => ({
     smooth: true,
     data: cpuData.value,
     areaStyle: {
-      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: 'rgba(33, 150, 243, 0.5)' },
-        { offset: 1, color: 'rgba(33, 150, 243, 0.1)' }
-      ])
+      color: 'rgba(33, 150, 243, 0.14)'
     },
     lineStyle: {
       color: '#2196f3',
@@ -345,10 +342,7 @@ const getMemoryChartOption = () => ({
     smooth: true,
     data: memoryData.value,
     areaStyle: {
-      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: 'rgba(76, 175, 80, 0.5)' },
-        { offset: 1, color: 'rgba(76, 175, 80, 0.1)' }
-      ])
+      color: 'rgba(76, 175, 80, 0.14)'
     },
     lineStyle: {
       color: '#4caf50',
@@ -719,22 +713,22 @@ onBeforeUnmount(() => {
 }
 
 .cpu-card .stat-icon {
-  background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+  background: #2196f3;
   color: #fff;
 }
 
 .memory-card .stat-icon {
-  background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+  background: #4caf50;
   color: #fff;
 }
 
 .disk-card .stat-icon {
-  background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+  background: #ff9800;
   color: #fff;
 }
 
 .process-card .stat-icon {
-  background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
+  background: #9c27b0;
   color: #fff;
 }
 

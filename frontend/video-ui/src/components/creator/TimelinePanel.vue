@@ -354,7 +354,7 @@ const selectSubtitle = (index) => {
 
 .timeline-ruler {
   height: 32px;
-  background: linear-gradient(180deg, rgba(22, 18, 38, 0.95) 0%, rgba(12, 10, 20, 0.95) 100%);
+  background: rgba(22, 18, 38, 0.95);
   border-bottom: 1px solid #2a2a2a;
   position: relative;
   overflow: hidden;

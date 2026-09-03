@@ -30,6 +30,13 @@
         <p>搜索中...</p>
       </div>
 
+      <div v-else-if="errorMessage" class="empty-state error-state" role="alert">
+        <el-icon class="empty-icon"><WarningFilled /></el-icon>
+        <p class="empty-text">搜索暂时不可用</p>
+        <p class="empty-hint">{{ errorMessage }}</p>
+        <el-button type="primary" @click="retrySearch">重新搜索</el-button>
+      </div>
+
       <!-- 空状态 -->
       <div v-else-if="videos.length === 0" class="empty-state">
         <el-icon class="empty-icon"><Search /></el-icon>
@@ -45,6 +52,10 @@
           class="video-item"
           :style="{ animationDelay: `${index * 0.05}s` }"
           @click="goToVideo(video.id)"
+          role="link"
+          tabindex="0"
+          @keydown.enter="goToVideo(video.id)"
+          @keydown.space.prevent="goToVideo(video.id)"
         >
           <div class="video-cover-wrapper">
             <el-image 
@@ -75,12 +86,12 @@
           <div class="video-info">
             <h3 class="video-title">{{ video.title }}</h3>
             <div class="video-meta">
-              <div class="author-info" @click.stop="goToUser(video.user.id)">
+              <button type="button" class="author-info" @click.stop="goToUser(video.user.id)">
                 <el-avatar :size="20" :src="video.user.avatar">
                   <el-icon><User /></el-icon>
                 </el-avatar>
                 <span class="author-name">{{ video.user.username }}</span>
-              </div>
+              </button>
               <div class="video-stats">
                 <span>{{ formatNumber(video.views_count) }} 播放</span>
                 <span class="dot">·</span>
@@ -109,7 +120,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TopNav from '@/components/common/TopNav.vue'
-import { Search, VideoCamera, VideoPlay, User } from '@element-plus/icons-vue'
+import { Search, VideoCamera, VideoPlay, User, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import service from '@/api/user'
 
@@ -124,6 +135,7 @@ const totalCount = ref(0)
 const hasMore = ref(true)
 const currentPage = ref(1)
 const sortOption = ref('-created_at')
+const errorMessage = ref('')
 
 // 执行搜索
 const performSearch = async (query, page = 1) => {
@@ -135,6 +147,7 @@ const performSearch = async (query, page = 1) => {
     if (page === 1) {
       loading.value = true
       videos.value = []
+      errorMessage.value = ''
     } else {
       loadingMore.value = true
     }
@@ -185,6 +198,10 @@ const performSearch = async (query, page = 1) => {
       currentPage.value = page
     } catch (fallbackError) {
       console.error('普通搜索也失败:', fallbackError)
+      if (page === 1) {
+        videos.value = []
+        errorMessage.value = '请检查网络连接后重试。'
+      }
       ElMessage.error('搜索失败，请稍后重试')
     }
   } finally {
@@ -192,6 +209,8 @@ const performSearch = async (query, page = 1) => {
     loadingMore.value = false
   }
 }
+
+const retrySearch = () => performSearch(searchQuery.value, 1)
 
 // 处理排序变化
 const handleSortChange = () => {
@@ -257,7 +276,7 @@ onMounted(() => {
 <style scoped>
 .search-page {
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--color-background, #f6f8fb);
 }
 
 .search-container {
@@ -273,12 +292,12 @@ onMounted(() => {
 .search-title {
   font-size: 24px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--color-text, #1f2937);
   margin: 0 0 8px 0;
 }
 
 .search-keyword {
-  color: #3b82f6;
+  color: var(--color-primary, #2563eb);
 }
 
 .search-count {
@@ -309,8 +328,8 @@ onMounted(() => {
 }
 
 .search-filters :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--color-primary, #2563eb);
+  border-color: var(--color-primary, #2563eb);
   color: #ffffff;
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
@@ -439,7 +458,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: rgba(255, 255, 255, 0.8);
   font-size: 40px;
 }
@@ -453,7 +472,6 @@ onMounted(() => {
   gap: 4px;
   padding: 4px 8px;
   background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
   border-radius: 4px;
   color: #fff;
   font-size: 12px;
@@ -477,12 +495,12 @@ onMounted(() => {
 }
 
 .resolution-badge[class~="4k"] {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  background: #ff6b6b;
   box-shadow: 0 2px 8px rgba(238, 90, 36, 0.4);
 }
 
 .resolution-badge[class~="2k"] {
-  background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
+  background: #a29bfe;
   box-shadow: 0 2px 8px rgba(108, 92, 231, 0.4);
 }
 
@@ -521,11 +539,24 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
   transition: color 0.3s;
 }
 
 .author-info:hover {
-  color: #3b82f6;
+  color: var(--color-primary, #2563eb);
+}
+
+.video-item:focus-visible,
+.author-info:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 4px;
+  border-radius: 8px;
 }
 
 .author-name {

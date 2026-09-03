@@ -62,7 +62,9 @@ const props = defineProps({
   danmakuList: { type: Array, default: () => [] },
   subtitleList: { type: Array, default: () => [] },
   subtitleStyle: { type: Object, default: () => ({}) },
-  isCleanMode: Boolean
+  isCleanMode: Boolean,
+  isLoading: Boolean,
+  errorMessage: String
 });
 
 const emit = defineEmits(['play', 'pause', 'timeupdate', 'ready', 'danmaku-send']);
@@ -535,8 +537,8 @@ onBeforeUnmount(() => {
   right: 20px;
   z-index: 200;
   padding: 12px 20px;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(10px);
+  background: #191b20;
+  border: 1px solid #3a3c45;
   border-radius: 8px;
   color: #fff;
   font-size: 14px;

@@ -136,10 +136,10 @@
           <template #default="{ row }">
             <div class="action-btns" @click.stop>
               <template v-if="row.status === 'pending'">
-                <el-button type="success" size="small" @click="handleApprove(row)">
+                <el-button type="success" size="small" :loading="actionLoading[row.id] === 'approve'" :disabled="!!actionLoading[row.id]" @click="handleApprove(row)">
                   <el-icon><Check /></el-icon> 通过
                 </el-button>
-                <el-button style="margin-left: 0;" type="danger" size="small" @click="handleReject(row)">
+                <el-button style="margin-left: 0;" type="danger" size="small" :disabled="!!actionLoading[row.id]" @click="handleReject(row)">
                    <el-icon><Close /></el-icon> 拒绝
                 </el-button>
               </template>
@@ -167,7 +167,7 @@
               <div class="no-video-content">
                 <el-icon class="no-video-icon"><Picture /></el-icon>
                 <h4>视频文件不可用</h4>
-                <el-button v-if="!currentVideo.hls_file && currentVideo.status === 'pending'" type="primary" @click="triggerProcessing">触发转码</el-button>
+                <el-button v-if="!currentVideo.hls_file && currentVideo.status === 'pending'" type="primary" :loading="processingLoading" @click="triggerProcessing">触发转码</el-button>
               </div>
             </div>
           </div>
@@ -204,8 +204,8 @@
             <h4>审核</h4>
             <el-input v-model="reviewForm.remark" type="textarea" :rows="2" placeholder="备注（可选）" />
             <div class="review-btns">
-              <el-button type="success" size="large" @click="confirmApprove"><el-icon><Check /></el-icon> 通过</el-button>
-              <el-button type="danger" size="large" @click="confirmReject"><el-icon><Close /></el-icon> 拒绝</el-button>
+              <el-button type="success" size="large" :loading="reviewActionLoading" :disabled="reviewActionLoading" @click="confirmApprove"><el-icon><Check /></el-icon> 通过</el-button>
+              <el-button type="danger" size="large" :disabled="reviewActionLoading" @click="confirmReject"><el-icon><Close /></el-icon> 拒绝</el-button>
             </div>
           </div>
         </div>
@@ -225,7 +225,7 @@
           <el-input v-model="rejectForm.customReason" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
-      <template #footer><el-button @click="rejectDialogVisible = false">取消</el-button><el-button type="primary" @click="submitReject">确定</el-button></template>
+      <template #footer><el-button :disabled="reviewActionLoading" @click="rejectDialogVisible = false">取消</el-button><el-button type="primary" :loading="reviewActionLoading" @click="submitReject">确定</el-button></template>
     </el-dialog>
   </div>
 </template>
@@ -243,6 +243,9 @@ import Hls from 'hls.js';
 
 // 列表数据
 const loading = ref(false);
+const actionLoading = ref({});
+const reviewActionLoading = ref(false);
+const processingLoading = ref(false);
 const videoList = ref([]);
 const total = ref(0);
 const currentPage = ref(1);
@@ -436,30 +439,41 @@ const handleClosePreview = () => {
 };
 
 // 通过审核
-const handleApprove = (video) => {
-  ElMessageBox.confirm(`通过「${video.title}」？`, '确认', { type: 'success' })
-    .then(() => {
-      approveVideo(video.id).then(() => {
-        ElMessage.success('已通过');
-        fetchVideoList();
-      });
-    })
-    .catch(() => {});
+const handleApprove = async (video) => {
+  try {
+    await ElMessageBox.confirm(`通过「${video.title}」？`, '确认', { type: 'success' });
+    actionLoading.value = { ...actionLoading.value, [video.id]: 'approve' };
+    await approveVideo(video.id);
+    ElMessage.success('已通过');
+    await fetchVideoList();
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '审核操作失败，请重试');
+    }
+  } finally {
+    const next = { ...actionLoading.value };
+    delete next[video.id];
+    actionLoading.value = next;
+  }
 };
 
 // 确认通过（预览对话框内）
-const confirmApprove = () => {
+const confirmApprove = async () => {
   if (!currentVideo.value) return;
-  
-  ElMessageBox.confirm('确认通过？', '确认', { type: 'success' })
-    .then(() => {
-      approveVideo(currentVideo.value.id, reviewForm.remark).then(() => {
-        ElMessage.success('已通过');
-        previewVisible.value = false;
-        fetchVideoList();
-      });
-    })
-    .catch(() => {});
+  try {
+    await ElMessageBox.confirm('确认通过？', '确认', { type: 'success' });
+    reviewActionLoading.value = true;
+    await approveVideo(currentVideo.value.id, reviewForm.remark);
+    ElMessage.success('已通过');
+    previewVisible.value = false;
+    await fetchVideoList();
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '审核操作失败，请重试');
+    }
+  } finally {
+    reviewActionLoading.value = false;
+  }
 };
 
 // 拒绝审核
@@ -479,30 +493,40 @@ const confirmReject = () => {
 
 // 提交拒绝
 const submitReject = () => {
-  rejectFormRef.value?.validate((valid) => {
+  rejectFormRef.value?.validate(async (valid) => {
     if (valid) {
       const reason = rejectForm.reasonType === 'other' 
         ? rejectForm.customReason 
         : rejectForm.reasonType;
       
-      rejectVideo(currentVideo.value.id, reason).then(() => {
+      reviewActionLoading.value = true;
+      try {
+        await rejectVideo(currentVideo.value.id, reason);
         ElMessage.success('已拒绝');
         rejectDialogVisible.value = false;
         previewVisible.value = false;
-        fetchVideoList();
-      });
+        await fetchVideoList();
+      } catch (error) {
+        ElMessage.error(error.message || '拒绝操作失败，请重试');
+      } finally {
+        reviewActionLoading.value = false;
+      }
     }
   });
 };
 
 // 触发转码
 const triggerProcessing = async () => {
+  if (processingLoading.value) return;
+  processingLoading.value = true;
   try {
     await service.post(`/videos/videos/${currentVideo.value.id}/process/`);
     ElMessage.success('已提交');
     setTimeout(fetchVideoList, 3000);
   } catch (error) {
     ElMessage.error(error.message || '提交转码任务失败');
+  } finally {
+    processingLoading.value = false;
   }
 };
 
@@ -633,7 +657,7 @@ onBeforeUnmount(destroyPlayer);
   justify-content: center;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: rgba(255, 255, 255, 0.6);
   font-size: 28px;
 }
@@ -643,7 +667,6 @@ onBeforeUnmount(destroyPlayer);
   bottom: 6px;
   right: 6px;
   background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
   color: #fff;
   padding: 3px 6px;
   border-radius: 4px;
@@ -656,7 +679,7 @@ onBeforeUnmount(destroyPlayer);
   position: absolute;
   top: 6px;
   left: 6px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: #fff;
   padding: 3px 6px;
   border-radius: 4px;
@@ -812,7 +835,7 @@ onBeforeUnmount(destroyPlayer);
 }
 
 .action-btns .el-button--success {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: #10b981;
   border: none;
 }
 
@@ -822,7 +845,7 @@ onBeforeUnmount(destroyPlayer);
 }
 
 .action-btns .el-button--danger {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: #ef4444;
   border: none;
 }
 
@@ -832,7 +855,7 @@ onBeforeUnmount(destroyPlayer);
 }
 
 .action-btns .el-button--primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   border: none;
   color: #fff;
 }
@@ -849,13 +872,13 @@ onBeforeUnmount(destroyPlayer);
 }
 
 :deep(.el-table__row:hover) {
-  background: linear-gradient(90deg, #f9fafb 0%, #ffffff 100%) !important;
+  background: #f9fafb !important;
   transform: translateX(2px);
 }
 
 /* 表格头部样式 */
 :deep(.el-table__header-wrapper) {
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  background: #f9fafb;
   border-radius: 8px 8px 0 0;
 }
 
@@ -889,17 +912,17 @@ onBeforeUnmount(destroyPlayer);
 }
 
 :deep(.el-tag--success) {
-  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  background: #d1fae5;
   color: #065f46;
 }
 
 :deep(.el-tag--warning) {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  background: #fef3c7;
   color: #92400e;
 }
 
 :deep(.el-tag--danger) {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  background: #fee2e2;
   color: #991b1b;
 }
 

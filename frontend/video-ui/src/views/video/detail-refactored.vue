@@ -1,6 +1,6 @@
 <template>
-  <div class="immersive-player-page" @wheel="handleWheel">
-    <div class="main-stage" :class="{ 'sidebar-open': showSidebar }">
+  <div class="immersive-player-page">
+    <div class="main-stage" :class="{ 'sidebar-open': showSidebar }" @wheel="handleWheel">
       <!-- 视频滑动容器 -->
       <VideoSlider
         :prev-video="prevVideo"
@@ -18,11 +18,21 @@
           :subtitle-list="subtitleList"
           :subtitle-style="subtitleStyle"
           :is-clean-mode="isCleanMode"
+          :is-loading="loading"
+          :error-message="playerError"
           @play="isPaused = false"
           @pause="isPaused = true"
           @danmaku-send="sendDanmaku"
         />
       </VideoSlider>
+
+      <div v-if="loading || playerError" class="player-state" role="status" aria-live="polite">
+        <el-icon v-if="loading" class="is-loading" :size="32"><Loading /></el-icon>
+        <el-icon v-else :size="32"><WarningFilled /></el-icon>
+        <strong>{{ loading ? '正在加载视频' : '视频暂时无法播放' }}</strong>
+        <p>{{ loading ? '正在准备播放资源，请稍候。' : playerError }}</p>
+        <button v-if="playerError" type="button" class="state-action" @click="retryVideo">重新加载</button>
+      </div>
 
       <!-- 顶部导航栏 -->
       <TopBar
@@ -46,6 +56,7 @@
         :comment-count="videoData.commentCount"
         :collect-count="videoData.collectCount"
         :is-clean-mode="isCleanMode"
+        :active-panel="showSidebar ? sidebarTab : ''"
         @toggle-user-panel="openSidebar('user')"
         @toggle-subscribe="toggleSubscribe"
         @toggle-like="toggleLike"
@@ -96,6 +107,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/user';
 import { ElMessage } from 'element-plus';
+import { Loading, WarningFilled } from '@element-plus/icons-vue';
 import service from '@/api/user';
 
 // 组件导入
@@ -159,15 +171,26 @@ const showSidebar = ref(false);
 const sidebarTab = ref('user');
 const authorVideos = ref([]);
 const authorLoading = ref(false);
+const playerError = ref('');
 
 const userAvatar = computed(() => userStore.userInfo?.avatar || '');
 
 // 侧边栏操作
 const openSidebar = (tab) => {
+  if (showSidebar.value && sidebarTab.value === tab) {
+    showSidebar.value = false;
+    return;
+  }
   sidebarTab.value = tab;
   showSidebar.value = true;
   if (tab === 'user' && authorVideos.value.length === 0) {
     fetchAuthorVideos();
+  }
+};
+
+const handleGlobalKeydown = (event) => {
+  if (event.key === 'Escape' && showSidebar.value) {
+    showSidebar.value = false;
   }
 };
 
@@ -270,15 +293,36 @@ const handleWheel = (e) => {
 
 // 初始化
 onMounted(async () => {
-  await fetchDanmaku();
-  await fetchSubtitles();
-  await fetchVideoDetail();
-  fetchComments();
-  recordView();
-  fetchVideoList();
+  window.addEventListener('keydown', handleGlobalKeydown);
+  try {
+    await fetchDanmaku();
+    await fetchSubtitles();
+    await fetchVideoDetail();
+    if (!videoData.value.hls_file) {
+      playerError.value = '暂时没有可用的播放资源，请稍后再试。';
+    }
+    fetchComments();
+    recordView();
+    fetchVideoList();
+  } catch (error) {
+    playerError.value = '视频信息加载失败，请检查网络后重试。';
+  }
 });
 
+const retryVideo = async () => {
+  playerError.value = '';
+  try {
+    await fetchVideoDetail();
+    if (!videoData.value.hls_file) {
+      playerError.value = '暂时没有可用的播放资源，请稍后再试。';
+    }
+  } catch (error) {
+    playerError.value = '视频信息加载失败，请检查网络后重试。';
+  }
+};
+
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown);
   if (playerRef.value) {
     playerRef.value.destroy();
   }
@@ -302,16 +346,63 @@ onBeforeUnmount(() => {
   position: relative;
   flex: 1;
   height: 100%;
+  min-width: 0;
   overflow: hidden;
+}
+
+.player-state {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  z-index: 240;
+  width: min(360px, calc(100% - 40px));
+  padding: 28px 24px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  color: #fff;
+  background: rgba(23, 25, 34, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.player-state .el-icon {
+  color: #fb7299;
+}
+
+.player-state strong {
+  font-size: 18px;
+}
+
+.player-state p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.state-action {
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #fb7299;
+  cursor: pointer;
 }
 
 @media (max-width: 768px) {
   .immersive-player-page {
-    flex-direction: column;
+    display: block;
   }
   
   .main-stage {
     width: 100%;
+    height: 100%;
   }
 }
 </style>

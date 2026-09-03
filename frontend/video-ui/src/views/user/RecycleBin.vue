@@ -395,10 +395,7 @@ onMounted(() => {
   font-weight: 600;
   color: #1a1a1a;
   margin: 0 0 8px 0;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #4f46e5;
 }
 
 .info-description {
@@ -566,18 +563,17 @@ onMounted(() => {
   /* 默认样式（普通状态） */
   background: rgba(0, 0, 0, 0.75);
   color: white;
-  backdrop-filter: blur(8px);
 }
 
 .delete-badge.urgent {
-  background: linear-gradient(135deg, #ff4757, #ff6b81);
+  background: #ff4757;
   color: white;
   animation: urgentPulse 2s ease-in-out infinite;
   box-shadow: 0 2px 12px rgba(255, 71, 87, 0.4);
 }
 
 .delete-badge.warning {
-  background: linear-gradient(135deg, #ffa726, #ffb74d);
+  background: #ffa726;
   color: white;
   box-shadow: 0 2px 12px rgba(255, 167, 38, 0.4);
 }
@@ -646,7 +642,7 @@ onMounted(() => {
 }
 
 .card-footer .el-button--primary {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: #667eea;
   border: none;
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }

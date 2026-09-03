@@ -586,7 +586,7 @@ onUnmounted(() => {
 }
 
 .card-header .header-icon.vip-icon {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  background: #fef3c7;
   color: #d97706;
 }
 
@@ -623,7 +623,7 @@ onUnmounted(() => {
 }
 
 .status-badge.active {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  background: #fef3c7;
   color: #d97706;
 }
 
@@ -734,11 +734,11 @@ onUnmounted(() => {
 }
 
 .card-badge {
-  background: linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%);
+  background: #ff4d4f;
 }
 
 .card-recommend {
-  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  background: #f59e0b;
 }
 
 .duration-label {
@@ -848,7 +848,7 @@ onUnmounted(() => {
   width: 100%;
   font-size: 16px;
   font-weight: 600;
-  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  background: #d97706;
   border: none;
   border-radius: 10px;
   box-shadow: 0 4px 12px rgba(217, 119, 6, 0.2);

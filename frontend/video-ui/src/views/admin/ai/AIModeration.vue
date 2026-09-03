@@ -23,7 +23,7 @@
             <el-option label="待人工复核" value="uncertain" />
             <el-option label="不安全" value="unsafe" />
           </el-select>
-          <el-button type="primary" @click="batchModerate" :disabled="selectedVideos.length === 0">
+          <el-button type="primary" :loading="loading" @click="batchModerate" :disabled="loading || selectedVideos.length === 0">
             <el-icon><Cpu /></el-icon> 批量审核 ({{ selectedVideos.length }})
           </el-button>
         </div>
@@ -33,7 +33,7 @@
     <StatsCards :stats="stats" class="animate__animated animate__fadeInUp animate__faster" />
 
     <!-- 审核列表 -->
-    <div class="moderation-list animate__animated animate__fadeInUp animate__fast">
+    <div class="moderation-list animate__animated animate__fadeInUp animate__fast" :aria-busy="loading">
       <el-table 
         v-loading="loading" 
         :data="moderationList" 

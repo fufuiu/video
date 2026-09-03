@@ -6,30 +6,45 @@
     <!-- 分类导航 -->
     <div class="category-bar">
       <div class="category-container" ref="categoryContainer">
-        <div
+        <button
           v-for="(category, index) in categories"
           :key="category.id"
           :ref="el => setCategoryRef(el, index)"
           class="category-tab"
           :class="{ active: activeCategory === category.id }"
+          type="button"
+          role="tab"
+          :aria-selected="activeCategory === category.id"
           @click="handleCategoryChange(category.id, index)"
         >
           {{ category.name }}
-        </div>
+        </button>
         <div class="category-indicator" :style="indicatorStyle"></div>
       </div>
     </div>
 
     <!-- 视频瀑布流 -->
     <div class="main-container">
-      <div v-if="loading && videos.length === 0" class="loading-state">
+      <div v-if="loading && videos.length === 0" class="loading-state" role="status" aria-live="polite">
         <div class="loading-spinner"></div>
         <p>加载中...</p>
       </div>
 
+      <div v-else-if="errorMessage" class="empty-state error-state" role="alert">
+        <el-icon class="empty-icon"><WarningFilled /></el-icon>
+        <strong>内容加载失败</strong>
+        <p>{{ errorMessage }}</p>
+        <el-button type="primary" @click="retryCurrentView">重新加载</el-button>
+      </div>
+
       <div v-else-if="videos.length === 0" class="empty-state">
         <el-icon class="empty-icon"><VideoCamera /></el-icon>
-        <p>暂无视频</p>
+        <strong>这里还没有视频</strong>
+        <p>换个频道看看，或者发布你的第一个作品。</p>
+        <div class="empty-actions">
+          <el-button v-if="activeCategory !== 'recommend'" type="primary" @click="handleCategoryChange('recommend', 1)">看看推荐</el-button>
+          <el-button plain @click="goToCreate">开始创作</el-button>
+        </div>
       </div>
 
       <div v-else class="video-waterfall">
@@ -37,9 +52,12 @@
           v-for="(video, index) in videos"
           :key="video.id"
           class="video-item"
-          :class="{ 'video-item-featured': index === 0 }"
+          role="link"
+          tabindex="0"
           :style="{ animationDelay: `${index * 0.05}s` }"
           @click="goToVideo(video.id)"
+          @keydown.enter="goToVideo(video.id)"
+          @keydown.space.prevent="goToVideo(video.id)"
           @mouseenter="handleVideoHover(video, true)"
           @mouseleave="handleVideoHover(video, false)"
         >
@@ -47,7 +65,8 @@
             <!-- 封面图 -->
             <el-image 
               v-show="!video.isHovering"
-              :src="video.thumbnail" 
+              :src="video.thumbnail"
+              :alt="video.title"
               fit="cover"
               class="video-cover"
               lazy
@@ -84,12 +103,12 @@
           <div class="video-info-wrapper">
             <h3 class="video-title">{{ video.title }}</h3>
             <div class="video-meta-bottom">
-              <div class="author-info" @click.stop="goToUser(video.user.id)">
+              <button class="author-info" type="button" @click.stop="goToUser(video.user.id)">
                 <el-avatar :size="16" :src="video.user.avatar">
                   <el-icon><User /></el-icon>
                 </el-avatar>
                 <span class="author-name">{{ video.user.username }}</span>
-              </div>
+              </button>
               <div class="video-stats">
                 <span>{{ formatNumber(video.views_count) }} 次观看</span>
               </div>
@@ -116,9 +135,10 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import TopNav from '@/components/common/TopNav.vue'
-import { VideoCamera, VideoPlay, User } from '@element-plus/icons-vue'
+import { VideoCamera, VideoPlay, User, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import service from '@/api/user'
+import { getToken } from '@/utils/auth'
 
 const router = useRouter()
 
@@ -132,6 +152,14 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const hasMore = ref(true)
 const currentPage = ref(1)
+const errorMessage = ref('')
+
+const baseCategories = [
+  { id: 'all', name: '全部' },
+  { id: 'recommend', name: '推荐' },
+  { id: 'popular', name: '热门' },
+  { id: 'latest', name: '最新' }
+]
 
 // 分类导航相关
 const categoryContainer = ref(null)
@@ -294,11 +322,7 @@ const fetchCategories = async () => {
     // 确保分类数据有 id 和 name 字段
     const validCategories = categoryData.filter(cat => cat.id && cat.name)
     
-    categories.value = [
-      { id: 'all', name: '全部' },
-      { id: 'recommend', name: '推荐' },
-      ...validCategories
-    ]
+    categories.value = [...baseCategories, ...validCategories.filter(cat => !baseCategories.some(base => base.id === cat.id))]
     
     console.log('获取到的分类:', categories.value)
   } catch (error) {
@@ -308,6 +332,7 @@ const fetchCategories = async () => {
 
 const fetchVideos = async (page = 1) => {
   try {
+    errorMessage.value = ''
     if (page === 1) {
       loading.value = true
     } else {
@@ -328,7 +353,7 @@ const fetchVideos = async (page = 1) => {
     }
     
     // 推荐按播放量排序
-    if (activeCategory.value === 'recommend') {
+    if (activeCategory.value === 'recommend' || activeCategory.value === 'popular') {
       params.ordering = '-views_count'
     }
 
@@ -352,7 +377,8 @@ const fetchVideos = async (page = 1) => {
     currentPage.value = page
   } catch (error) {
     console.error('获取视频列表失败:', error)
-    ElMessage.error('获取视频列表失败')
+    errorMessage.value = '请检查网络连接后再试。'
+    if (page === 1) videos.value = []
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -397,6 +423,19 @@ const goToUser = (userId) => {
   router.push(`/user/${userId}`)
 }
 
+const goToCreate = () => {
+  if (getToken()) {
+    router.push('/user/dashboard/create')
+    return
+  }
+  router.push({
+    path: '/auth',
+    query: { redirect: '/user/dashboard/create' }
+  })
+}
+
+const retryCurrentView = () => fetchVideos(1)
+
 const formatDuration = (seconds) => {
   if (!seconds && seconds !== 0) return '00:00'
   const minutes = Math.floor(seconds / 60)
@@ -428,7 +467,7 @@ onMounted(() => {
 <style scoped>
 .douyin-home {
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--color-background, #f6f8fb);
   width: 100%;
   overflow-x: hidden;
 }
@@ -436,15 +475,17 @@ onMounted(() => {
 .category-bar {
   position: sticky;
   top: 60px;
-  background: #ffffff;
-  border-bottom: 1px solid #e3e5e7;
+  background: var(--color-surface, #fff);
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
   z-index: 100;
   padding: 0 20px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .category-container {
   width: 100%;
+  box-sizing: border-box;
   display: flex;
   gap: 20px;
   overflow-x: auto;
@@ -459,27 +500,30 @@ onMounted(() => {
 }
 
 .category-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
   padding: 8px 16px;
-  font-size: 15px;
+  min-height: 40px;
+  font-size: 14px;
   font-weight: 500;
   color: #61666d;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color var(--motion-fast, 150ms) ease, background-color var(--motion-fast, 150ms) ease;
   user-select: none;
   position: relative;
   z-index: 1;
 }
 
 .category-tab:hover {
-  color: #18191c;
-  transform: translateY(-1px);
+  color: var(--color-text, #0f172a);
+  background: var(--color-surface-muted, #f1f5f9);
 }
 
 .category-tab.active {
-  color: #18191c;
+  color: var(--color-primary, #2563eb);
   font-weight: 600;
-  transform: scale(1.05);
 }
 
 .category-indicator {
@@ -487,7 +531,7 @@ onMounted(() => {
   bottom: 12px;
   left: 0;
   height: calc(100% - 24px);
-  background: #f1f2f3;
+  background: var(--color-primary-soft, #eff6ff);
   border-radius: 8px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 0;
@@ -534,49 +578,12 @@ onMounted(() => {
 }
 
 /* 第一个视频占据 2x2 */
-.video-item-featured {
-  grid-column: span 2;
-  grid-row: span 2;
-}
-
-/* 第一个视频封面比例调整，匹配两行普通视频的高度 */
-/* 普通视频：封面(58.25% padding) + 信息区(约70px) + gap(8px) = 一行高度 */
-/* 两行高度 = 2 * 封面 + 2 * 信息区 + gap */
-/* 第一个视频封面需要：2 * 普通封面高度 + 普通信息区高度 + gap */
-.video-item-featured .video-cover-wrapper {
-  /* 计算：普通封面是宽度的58.25%，第一个视频宽度是2倍+gap */
-  /* 两行普通视频封面总高度约等于 58.25% * 2 + 8px(gap) ≈ 120% */
-  padding-top: calc(58.25% + 85px + 8px);
-}
-
-/* 第一个视频的标题和信息放大 */
-.video-item-featured .video-title {
-  font-size: 16px;
-  -webkit-line-clamp: 3;
-}
-
-.video-item-featured .video-info-wrapper {
-}
-
-.video-item-featured .author-info {
-  gap: 8px;
-}
-
-.video-item-featured .author-info .el-avatar {
-  width: 20px !important;
-  height: 20px !important;
-}
-
-.video-item-featured .video-stats {
-  font-size: 12px;
-}
-
 .video-cover-wrapper {
   border-radius: 10px;
   position: relative;
   width: 100%;
   padding-top: 58.25%; /* 16:9 比例 */
-  background: #000;
+  background: #0f172a;
   overflow: hidden;
 }
 
@@ -612,7 +619,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: rgba(255, 255, 255, 0.8);
   font-size: 40px;
 }
@@ -627,7 +634,6 @@ onMounted(() => {
   gap: 4px;
   padding: 4px 8px;
   background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
   border-radius: 4px;
   color: #fff;
   font-size: 12px;
@@ -658,18 +664,18 @@ onMounted(() => {
 }
 
 .resolution-badge[class~="4k"] {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  background: #ff6b6b;
   box-shadow: 0 2px 8px rgba(238, 90, 36, 0.4);
 }
 
 .resolution-badge[class~="2k"] {
-  background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
+  background: #a29bfe;
   box-shadow: 0 2px 8px rgba(108, 92, 231, 0.4);
 }
 
 .video-info-wrapper {
-  padding-top: 10px;
-  background: #ffffff;
+  padding: 10px 2px 0;
+  background: transparent;
   width: 100%;
   font-size: 15px;
   font-weight: 500;
@@ -677,7 +683,7 @@ onMounted(() => {
 
 .video-title {
   text-align: left;
-  color: #1f2937;
+  color: var(--color-text, #0f172a);
   line-height: 1.4;
   margin: 0 0 8px 0;
   display: -webkit-box;
@@ -707,7 +713,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #6b7280;
+  color: var(--color-text-secondary, #475569);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 1;
   min-width: 0;
@@ -733,7 +744,7 @@ onMounted(() => {
 }
 
 .video-stats {
-  color: #9ca3af;
+  color: var(--color-text-muted, #64748b);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -817,7 +828,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   padding: 100px 0;
-  color: #6b7280;
+  color: var(--color-text-secondary, #475569);
   animation: fadeIn 0.6s ease-out;
   width: 100%;
 }
@@ -852,9 +863,34 @@ onMounted(() => {
 }
 
 .empty-state p {
-  font-size: 16px;
-  color: #9ca3af;
-  font-weight: 500;
+  font-size: 15px;
+  color: var(--color-text-muted, #64748b);
+  font-weight: 400;
+  margin: 8px 0 0;
+}
+
+.empty-state strong {
+  color: var(--color-text, #0f172a);
+  font-size: 18px;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.error-state .empty-icon {
+  color: var(--color-danger, #dc2626);
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-item,
+  .empty-state,
+  .empty-icon {
+    animation: none;
+  }
 }
 
 @media (max-width: 1400px) {

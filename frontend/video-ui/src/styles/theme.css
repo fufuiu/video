@@ -1,50 +1,85 @@
 :root {
-  /* 默认主题变量（浅色） */
-  --bg-color: #f5f5f5;
-  --bg-color-secondary: #ffffff;
-  --bg-color-tertiary: #f0f0f0;
-  --text-color: #333333;
-  --text-color-secondary: #555555;
-  --text-color-tertiary: #777777;
-  --border-color: #e0e0e0;
-  --accent-color: #0088cc;
-  --accent-color-hover: #006699;
-  --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --input-bg: #f0f0f0;
-  --dropdown-bg: #ffffff;
-  --dropdown-hover: #f0f0f0;
-  --divider-color: #e0e0e0;
-  --overlay-color: rgba(0, 0, 0, 0.5);
-  --shadow-color: rgba(0, 0, 0, 0.1);
-  --button-text: #333333;
+  /* MindPalette shared design tokens: content-first light UI */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #eff6ff;
+  --color-accent: #e11d48;
+  --color-accent-hover: #be123c;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger: #dc2626;
+  --color-background: #f6f8fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-surface-subtle: #f8fafc;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-text: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-text-disabled: #94a3b8;
+  --color-on-primary: #ffffff;
+  --color-on-accent: #ffffff;
+
+  --bg-color: var(--color-background);
+  --bg-color-secondary: var(--color-surface);
+  --bg-color-tertiary: var(--color-surface-muted);
+  --text-color: var(--color-text);
+  --text-color-secondary: var(--color-text-secondary);
+  --text-color-tertiary: var(--color-text-muted);
+  --border-color: var(--color-border);
+  --accent-color: var(--color-primary);
+  --accent-color-hover: var(--color-primary-hover);
+  --header-bg: var(--color-surface);
+  --card-bg: var(--color-surface);
+  --input-bg: var(--color-surface-muted);
+  --dropdown-bg: var(--color-surface);
+  --dropdown-hover: var(--color-surface-subtle);
+  --divider-color: var(--color-border);
+  --overlay-color: rgba(15, 23, 42, 0.56);
+  --shadow-color: rgba(15, 23, 42, 0.12);
+  --button-text: var(--color-text);
   --button-bg-transparent: transparent;
-  --button-border-light: #333333;
-  --hover-overlay: rgba(0, 0, 0, 0.1);
-  --video-creator-color: #555555;
-  --video-meta-color: #777777;
-  --banner-overlay: linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7));
+  --button-border-light: var(--color-border-strong);
+  --hover-overlay: rgba(37, 99, 235, 0.08);
+  --video-creator-color: var(--color-text-secondary);
+  --video-meta-color: var(--color-text-muted);
+  --banner-overlay: rgba(255, 255, 255, 0.86);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.10);
+  --shadow-lg: 0 18px 48px rgba(15, 23, 42, 0.16);
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.28);
+  --motion-fast: 150ms;
+  --motion-normal: 220ms;
+  --motion-slow: 320ms;
 }
 
-/* 动画过渡效果 */
 body {
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color var(--motion-normal) ease, color var(--motion-normal) ease;
 }
 
-/* 确保所有元素都应用过渡效果 */
-*, *::before, *::after {
-  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+*:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* NProgress样式覆盖 - 确保进度条显示在所有元素之上 */
-#nprogress .bar {
-  z-index: 9999 !important; /* 使用更高的z-index值 */
-}
-
-#nprogress .peg {
-  z-index: 9999 !important;
-}
-
+#nprogress .bar,
+#nprogress .peg,
 #nprogress .spinner {
   z-index: 9999 !important;
-} 
+}

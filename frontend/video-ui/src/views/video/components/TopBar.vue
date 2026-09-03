@@ -1,26 +1,26 @@
 <template>
   <div class="top-bar" :class="{ 'hidden': isCleanMode }">
     <div class="top-left">
-      <button class="back-btn" @click="$emit('go-back')">
+      <button type="button" class="back-btn" aria-label="返回" title="返回" @click="$emit('go-back')">
         <el-icon><ArrowLeft /></el-icon>
       </button>
     </div>
     
     <div class="top-right" v-if="!isOwnVideo">
-      <button class="top-btn" @click="showMenu = !showMenu">
+      <button type="button" class="top-btn" aria-label="更多操作" title="更多操作" :aria-expanded="showMenu" aria-haspopup="true" @click="showMenu = !showMenu">
         <el-icon><MoreFilled /></el-icon>
       </button>
       
       <transition name="fade">
         <div class="more-menu" v-if="showMenu" @click.stop>
-          <div class="menu-item" @click="handleReport">
+          <button type="button" class="menu-item" @click="handleReport">
             <el-icon><WarningFilled /></el-icon>
             <span>举报</span>
-          </div>
-          <div class="menu-item" @click="handleNotInterested">
+          </button>
+          <button type="button" class="menu-item" @click="handleNotInterested">
             <el-icon><CircleClose /></el-icon>
             <span>不感兴趣</span>
-          </div>
+          </button>
         </div>
       </transition>
     </div>
@@ -95,11 +95,11 @@ const handleReportSuccess = () => {
 
 .back-btn,
 .top-btn {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.1);
-  border: none;
+  background: #202127;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   color: #fff;
   cursor: pointer;
   display: flex;
@@ -110,7 +110,8 @@ const handleReportSuccess = () => {
 
 .back-btn:hover,
 .top-btn:hover {
-  background: rgba(255,255,255,0.2);
+  background: #303139;
+  border-color: rgba(255, 255, 255, 0.55);
 }
 
 .top-right {
@@ -122,8 +123,8 @@ const handleReportSuccess = () => {
   top: 100%;
   right: 0;
   margin-top: 8px;
-  background: rgba(0,0,0,0.8);
-  backdrop-filter: blur(12px);
+  background: #1d1f25;
+  border: 1px solid #3b3d46;
   border-radius: 8px;
   padding: 8px 0;
   min-width: 140px;
@@ -135,6 +136,11 @@ const handleReportSuccess = () => {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
   color: #fff;
   font-size: 14px;
   cursor: pointer;
@@ -142,7 +148,13 @@ const handleReportSuccess = () => {
 }
 
 .menu-item:hover {
-  background: rgba(255,255,255,0.1);
+  background: #30323a;
+}
+
+.back-btn:focus-visible,
+.top-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .menu-item .el-icon {

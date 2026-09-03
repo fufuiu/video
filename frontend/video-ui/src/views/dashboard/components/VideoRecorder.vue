@@ -232,7 +232,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.95) 0%, rgba(220, 38, 38, 0.95) 100%);
+  background: rgba(239, 68, 68, 0.95);
   color: #fff;
   padding: 8px 16px;
   border-radius: 20px;

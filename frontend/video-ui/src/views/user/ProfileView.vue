@@ -64,12 +64,14 @@
               <el-form-item label="用户名" class="form-item">
                 <el-input 
                   v-model="userData.username" 
-                  placeholder="请输入用户名"
+                  readonly
+                  aria-describedby="username-help"
                 >
                   <template #prefix>
                     <el-icon class="input-icon"><User /></el-icon>
                   </template>
                 </el-input>
+                <p id="username-help" class="field-help">用户名是登录标识，注册后不可修改</p>
               </el-form-item>
               
               <el-form-item label="昵称" class="form-item">
@@ -213,7 +215,6 @@ const saveUserProfile = async () => {
     // 只发送有值的字段
     const updateData = {};
     
-    if (userData.username) updateData.username = userData.username;
     if (userData.last_name) updateData.last_name = userData.last_name;
     if (userData.email) updateData.email = userData.email;
     if (userData.bio) updateData.bio = userData.bio;
@@ -342,7 +343,7 @@ onMounted(() => {
 /* 卡片头部 */
 .card-header {
   padding: 16px 20px;
-  background: linear-gradient(135deg, #eff6ff 0%, #f3f4f6 100%);
+  background: #eff6ff;
   border-bottom: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
@@ -499,6 +500,14 @@ onMounted(() => {
 
 .form-item {
   margin-bottom: 20px;
+}
+
+.field-help {
+  width: 100%;
+  margin: 6px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* 表单样式 */
@@ -724,4 +733,4 @@ onMounted(() => {
 .dashboard-content::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
-</style> 
+</style>

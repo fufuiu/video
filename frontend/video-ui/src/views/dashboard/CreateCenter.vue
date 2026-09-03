@@ -4,10 +4,19 @@
     <div class="top-nav animate__animated animate__fadeInDown">
       <div class="nav-content">
         <div class="nav-left">
-          <div class="logo animate__animated animate__bounceIn" @click="goToHome">
+          <div class="logo animate__animated animate__bounceIn">
             <span class="logo-text">MindPalette</span>
           </div>
           <h1 class="page-title animate__animated animate__fadeInLeft animate__delay-1s">创作中心</h1>
+          <el-button
+            class="dashboard-btn animate__animated animate__fadeInLeft animate__delay-2s"
+            aria-label="返回工作台"
+            title="返回工作台"
+            @click="goToDashboard"
+          >
+            <el-icon><ArrowLeft /></el-icon>
+            <span>返回工作台</span>
+          </el-button>
         </div>
         <div class="nav-actions animate__animated animate__fadeInRight animate__delay-1s">
           <!-- 草稿保存状态 -->
@@ -33,7 +42,7 @@
             <el-button class="draft-btn animate__animated animate__fadeInUp animate__delay-2s">
               <el-icon><DocumentCopy /></el-icon>
               草稿
-              <el-badge v-if="hasDraft" is-dot class="draft-badge animate__animated animate__pulse animate__infinite" />
+              <el-badge v-if="hasDraft" is-dot class="draft-badge" />
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -49,13 +58,6 @@
             </template>
           </el-dropdown>
           
-          <el-button 
-            class="dashboard-btn animate__animated animate__fadeInUp animate__delay-2s"
-            @click="goToDashboard"
-          >
-            <el-icon><User /></el-icon>
-            个人中心
-          </el-button>
           <el-button 
             v-if="activeTab === 'upload'"
             type="primary" 
@@ -150,7 +152,7 @@
                             class="tag-chip animate__animated animate__bounceIn"
                           >
                             {{ getTagName(tag) }}
-                            <span class="tag-remove animate__animated animate__pulse animate__infinite animate__slower" @click="removeTag(tag)">×</span>
+                            <button type="button" class="tag-remove" :aria-label="`移除标签 ${getTagName(tag)}`" @click="removeTag(tag)">×</button>
                           </div>
                           <input
                             ref="tagInput"
@@ -698,10 +700,6 @@ const switchTab = (tabName) => {
   }
 };
 
-const goToHome = () => {
-  router.push('/');
-};
-
 const goToDashboard = () => {
   router.push('/user/dashboard');
 };
@@ -1246,7 +1244,7 @@ onBeforeUnmount(() => {
   bottom: 0;
   width: 100vw;
   height: 100vh;
-  background: #f4f5f7;
+  background: var(--color-background, #f6f8fb);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1254,8 +1252,8 @@ onBeforeUnmount(() => {
 
 /* 顶部导航 */
 .top-nav {
-  background: #fff;
-  border-bottom: 1px solid #e3e5e7;
+  background: var(--color-surface, #fff);
+  border-bottom: 1px solid var(--color-border, #e3e5e7);
   flex-shrink: 0;
   z-index: 10;
 }
@@ -1266,32 +1264,26 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   height: 64px;
+  gap: 16px;
 }
 
 .nav-left {
   display: flex;
   align-items: center;
   gap: 24px;
+  min-width: 0;
 }
 
 .logo {
-  cursor: pointer;
   display: flex;
   align-items: center;
-  transition: all 0.3s;
-}
-
-.logo:hover {
-  transform: scale(1.05);
+  padding: 0;
 }
 
 .logo-text {
   font-size: 24px;
   font-weight: 700;
-  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--color-primary, #2563eb);
   letter-spacing: -0.5px;
 }
 
@@ -1308,6 +1300,7 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 /* 草稿保存状态 */
@@ -1516,7 +1509,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #fafbfc 0%, #ffffff 100%);
+  background: #fafbfc;
 }
 
 .video-form {
@@ -1555,7 +1548,7 @@ onBeforeUnmount(() => {
   content: '';
   width: 3px;
   height: 14px;
-  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+  background: #8b5cf6;
   border-radius: 2px;
   margin-right: 2px;
 }
@@ -1727,7 +1720,7 @@ onBeforeUnmount(() => {
   align-items: center;
   height: 26px;
   padding: 0 12px;
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: #8b5cf6;
   border-radius: 13px;
   font-size: 12px;
   color: #fff;
@@ -1738,7 +1731,7 @@ onBeforeUnmount(() => {
 }
 
 .tag-chip:hover {
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  background: #7c3aed;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3);
 }
@@ -1757,6 +1750,13 @@ onBeforeUnmount(() => {
   height: 16px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.2);
+  padding: 0;
+  border: 0;
+}
+
+.tag-remove:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 3px;
 }
 
 .tag-remove:hover {
@@ -1792,7 +1792,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   margin-top: 10px;
   padding: 8px 12px;
-  background: linear-gradient(135deg, #faf5ff 0%, #f3f4f6 100%);
+  background: #faf5ff;
   border-radius: 6px;
   border: 1px solid #e3e5e7;
   width: 100%;
@@ -2099,20 +2099,20 @@ onBeforeUnmount(() => {
 }
 
 .btn-submit {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: #8b5cf6;
   border: none;
   color: #fff;
   min-width: 120px;
 }
 
 .btn-submit:hover {
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  background: #7c3aed;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
 }
 
 .btn-submit:active {
-  background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
+  background: #6d28d9;
   transform: translateY(0);
 }
 
@@ -2166,13 +2166,6 @@ onBeforeUnmount(() => {
 /* 标签动效 */
 .tag-chip.animate__bounceOut {
   animation-duration: 0.3s;
-}
-
-/* 按钮悬停动效增强 */
-.record-btn:hover {
-  background: #7c3aed;
-  transform: translateX(4px) scale(1.02);
-  animation: pulse 1s infinite;
 }
 
 .back-btn:hover {
@@ -2244,11 +2237,11 @@ onBeforeUnmount(() => {
   }
 
   .nav-left {
-    gap: 12px;
+    gap: 8px;
   }
 
   .logo-text {
-    font-size: 20px;
+    display: none;
   }
 
   .page-title {
@@ -2277,6 +2270,11 @@ onBeforeUnmount(() => {
   
   .dashboard-btn span {
     display: none;
+  }
+
+  .dashboard-btn {
+    min-width: 40px;
+    padding: 0 10px;
   }
   
   .draft-status {
