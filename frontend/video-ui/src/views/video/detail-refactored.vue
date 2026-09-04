@@ -256,7 +256,7 @@ const handleWheel = (e) => {
       commentCount: preloadedData.comments_count || 0,
       collectCount: preloadedData.favorites_count || 0,
       publishTime: formatDate(preloadedData.published_at || preloadedData.created_at),
-      creatorName: preloadedData.user?.username || '未知用户',
+      creatorName: preloadedData.user?.display_name || preloadedData.user?.last_name || preloadedData.user?.username || '未知用户',
       creatorId: preloadedData.user?.id,
       creatorAvatar: preloadedData.user?.avatar || '',
       category: preloadedData.category,

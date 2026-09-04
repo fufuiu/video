@@ -126,9 +126,10 @@ export const useUserStore = defineStore('user', {
   },
   
   getters: {
+    displayName: (state) => state.userInfo?.display_name?.trim() || state.userInfo?.last_name?.trim() || state.username || '用户',
     isAdmin: (state) => {
       return state.role === 'admin' || state.role === 'superadmin';
     },
     isSuperAdmin: (state) => state.role === 'superadmin'
   }
-}); 
+});

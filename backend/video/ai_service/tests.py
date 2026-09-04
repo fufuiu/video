@@ -76,6 +76,38 @@ class SubtitleSoftDeleteTests(TestCase):
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.json()['style'], editor_style)
 
+    def test_published_subtitles_are_readable_without_login(self):
+        video = Video.objects.create(
+            title='published subtitle video',
+            user=self.user,
+            video_file='videos/uploads/published.mp4',
+            status='approved',
+            is_published=True,
+            subtitles_draft=[{'startTime': 0, 'endTime': 2, 'text': 'hello'}],
+        )
+        self.client.logout()
+
+        data_response = self.client.get(f'/api/ai/subtitle/{video.id}/data/')
+        vtt_response = self.client.get(f'/api/ai/subtitle/{video.id}/vtt/')
+
+        self.assertEqual(data_response.status_code, 200)
+        self.assertEqual(data_response.json()['subtitles'][0]['text'], 'hello')
+        self.assertEqual(vtt_response.status_code, 200)
+        self.assertIn('00:00:00.000 --> 00:00:02.000', vtt_response.content.decode())
+
+    def test_unpublished_subtitles_are_not_readable_without_login(self):
+        video = Video.objects.create(
+            title='private subtitle video',
+            user=self.user,
+            video_file='videos/uploads/private.mp4',
+            subtitles_draft=[{'startTime': 0, 'endTime': 2, 'text': 'secret'}],
+        )
+        self.client.logout()
+
+        response = self.client.get(f'/api/ai/subtitle/{video.id}/data/')
+
+        self.assertEqual(response.status_code, 403)
+
 
 class ProviderRegistryTests(SimpleTestCase):
     @override_settings(

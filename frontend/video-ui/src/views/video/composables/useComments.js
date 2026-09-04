@@ -17,7 +17,7 @@ export function useComments(videoId, formatTimeAgo) {
       
       comments.value = (response.results || []).map(c => ({
         id: c.id,
-        username: c.user?.username || '匿名用户',
+        username: c.user?.display_name || c.user?.last_name || c.user?.username || '匿名用户',
         userAvatar: c.user?.avatar || '',
         text: c.text,
         time: formatTimeAgo(c.created_at),
@@ -41,7 +41,7 @@ export function useComments(videoId, formatTimeAgo) {
       
       comments.value.unshift({
         id: response.id,
-        username: userStore.userInfo?.username || '我',
+        username: userStore.displayName || '我',
         userAvatar: userStore.userInfo?.avatar || '',
         text: text,
         time: '刚刚',

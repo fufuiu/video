@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import service from '@/api/user';
+import { getVideoSubtitles } from '@/api/video';
 
 export function useSubtitles(videoId) {
   const subtitleList = ref([]);
@@ -22,15 +22,12 @@ export function useSubtitles(videoId) {
 
   const fetchSubtitles = async () => {
     try {
-      const response = await service({
-        url: `/videos/videos/${videoId.value}/subtitles/`,
-        method: 'get'
-      });
+      const response = await getVideoSubtitles(videoId.value);
       
       const subtitles = response.subtitles || [];
       subtitleList.value = subtitles.map(sub => ({
-        start: sub.startTime || sub.start_time,
-        end: sub.endTime || sub.end_time,
+        start: sub.startTime ?? sub.start_time,
+        end: sub.endTime ?? sub.end_time,
         text: sub.text || '',
         translation: sub.translation || ''
       }));

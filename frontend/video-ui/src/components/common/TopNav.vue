@@ -174,7 +174,7 @@ const showNotificationMenu = ref(false)
 
 const isLoggedIn = computed(() => userStore.isLoggedIn)
 const userAvatar = computed(() => userStore.avatar || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png')
-const userName = computed(() => userStore.username || '用户')
+const userName = computed(() => userStore.displayName)
 const userId = computed(() => userStore.userId || '000000')
 const unreadCount = computed(() => notificationStore.unreadCount)
 const recentNotifications = computed(() => notificationStore.recentNotifications)

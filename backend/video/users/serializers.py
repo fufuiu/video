@@ -15,10 +15,11 @@ class UserSerializer(serializers.ModelSerializer):
     subscribers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'last_name', 'email', 'avatar', 'bio', 'website',
+        fields = ('id', 'username', 'last_name', 'display_name', 'email', 'avatar', 'bio', 'website',
                   'gender', 'birthday', 'is_verified', 'date_joined', 'subscribers_count', 'following_count')
         read_only_fields = ('id', 'date_joined', 'is_verified')
 
@@ -27,6 +28,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_following_count(self, obj):
         return obj.subscriptions.count()
+
+    def get_display_name(self, obj):
+        return (obj.last_name or '').strip() or obj.username
     
     def get_avatar(self, obj):
         if obj.avatar:

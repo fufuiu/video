@@ -142,7 +142,7 @@ const fetchWatchHistory = async () => {
       thumbnail: item.video.thumbnail,
       duration: formatDuration(item.video.duration),
       progress: calculateProgress(item.watched_duration, item.video.duration),
-      author: item.video.user.username,
+      author: item.video.user.display_name || item.video.user.last_name || item.video.user.username,
       views: formatNumber(item.video.views_count),
       publishTime: formatTimeAgo(item.video.created_at),
       watchTime: formatTimeAgo(item.view_date),
@@ -602,4 +602,4 @@ const goToHome = () => {
     grid-template-columns: 1fr;
   }
 }
-</style> 
+</style>

@@ -20,7 +20,7 @@
       <div class="video-details">
         <h3 class="video-title" :title="video.title">{{ video.title }}</h3>
         <div class="video-meta">
-          <span class="author">{{ video.user?.username || '未知用户' }}</span>
+          <span class="author">{{ video.user?.display_name || video.user?.last_name || video.user?.username || '未知用户' }}</span>
           <div class="stats">
             <span>{{ formatViews(video.views_count) }} 次观看</span>
             <span class="dot">·</span>

@@ -1009,19 +1009,25 @@ class VideoViewSet(viewsets.ModelViewSet):
         """
         video = self.get_object()
 
-        # 确保是视频所有者或管理员
-        if not (request.user.is_staff or video.user == request.user):
-            return Response(
-                {"detail": "无权操作此视频"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
         if request.method.lower() == 'get':
+            has_permission, error_message = check_video_view_permission(video, request.user)
+            if not has_permission:
+                return Response(
+                    {"detail": error_message},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             return Response({
                 "video_id": video.id,
                 "subtitles": video.subtitles_draft or [],
                 "style": video.subtitle_style or {}
             })
+
+        # 保存字幕仍然只允许视频所有者或管理员。
+        if not (request.user.is_staff or video.user == request.user):
+            return Response(
+                {"detail": "无权操作此视频"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         data = request.data
         subtitles = data.get('subtitles', None)

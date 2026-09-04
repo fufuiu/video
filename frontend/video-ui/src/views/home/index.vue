@@ -107,7 +107,7 @@
                 <el-avatar :size="16" :src="video.user.avatar">
                   <el-icon><User /></el-icon>
                 </el-avatar>
-                <span class="author-name">{{ video.user.username }}</span>
+                <span class="author-name">{{ video.user.display_name || video.user.last_name || video.user.username }}</span>
               </button>
               <div class="video-stats">
                 <span>{{ formatNumber(video.views_count) }} 次观看</span>
