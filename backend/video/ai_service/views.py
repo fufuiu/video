@@ -4,7 +4,7 @@ AI 服务视图
 """
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from core.task_lifecycle import enqueue_task, serialize_task_result, task_context_matches
 from django.shortcuts import get_object_or_404
@@ -708,6 +708,12 @@ class SubtitleViewSet(viewsets.ViewSet):
     """字幕相关视图集"""
     
     permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """字幕数据和 VTT 是播放资源，公开视频允许匿名读取。"""
+        if self.action in {'data', 'vtt'} and self.request.method == 'GET':
+            return [AllowAny()]
+        return [permission() for permission in self.permission_classes]
     
     def _get_video(self, video_id):
         """获取视频对象"""
@@ -719,6 +725,17 @@ class SubtitleViewSet(viewsets.ViewSet):
         if allow_staff and user.is_staff:
             return True
         return video.user == user
+
+    def _can_view_published_video(self, video, user):
+        """判断用户是否可以读取公开视频的字幕。"""
+        if user.is_authenticated and (user.is_staff or video.user == user):
+            return True
+        if not video.is_published or video.status != 'approved':
+            return False
+        if video.view_permission == 'public':
+            return True
+        # 与视频播放权限的现有约定保持一致：粉丝视频要求登录。
+        return video.view_permission == 'fans' and user.is_authenticated
     
     @action(detail=True, methods=['post'], url_path='detect')
     def detect(self, request, pk=None):
@@ -845,19 +862,24 @@ class SubtitleViewSet(viewsets.ViewSet):
         """
         video = self._get_video(pk)
         
-        # 权限检查：视频所有者或管理员
-        if not self._check_video_permission(video, request.user):
-            return Response(
-                {"detail": "无权操作此视频"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
         if request.method == 'GET':
+            if not self._can_view_published_video(video, request.user):
+                return Response(
+                    {"detail": "无权访问此视频"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             return Response({
                 "video_id": video.id,
                 "subtitles": video.subtitles_draft or [],
                 "style": video.subtitle_style or {},
             })
+
+        # 保存字幕仍然只允许视频所有者或管理员。
+        if not self._check_video_permission(video, request.user):
+            return Response(
+                {"detail": "无权操作此视频"},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # PUT 请求：保存字幕
         subtitles = request.data.get('subtitles')
@@ -917,8 +939,8 @@ class SubtitleViewSet(viewsets.ViewSet):
         """
         video = self._get_video(pk)
         
-        # 权限检查：公开视频或视频所有者或管理员
-        if not video.is_published and not self._check_video_permission(video, request.user):
+        # 播放器加载字幕时，权限必须与视频本身一致。
+        if not self._can_view_published_video(video, request.user):
             return Response(
                 {"detail": "无权访问此视频"},
                 status=status.HTTP_403_FORBIDDEN

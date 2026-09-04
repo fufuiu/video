@@ -436,7 +436,7 @@ const fetchVideoDetail = async () => {
       views: formatNumber(response.views_count), likes: formatNumber(response.likes_count),
       commentCount: response.comments_count || 0, collectCount: response.favorites_count || 0,
       publishTime: formatDate(response.published_at || response.created_at),
-      creatorName: response.user?.username || '未知用户', creatorId: response.user?.id,
+      creatorName: response.user?.display_name || response.user?.last_name || response.user?.username || '未知用户', creatorId: response.user?.id,
       creatorAvatar: response.user?.avatar || '', category: response.category,
       tags: response.tags || [], hls_file: response.hls_file, thumbnail: response.thumbnail
     };
@@ -471,7 +471,7 @@ const fetchComments = async () => {
   try {
     const response = await service({ url: '/videos/comments/', method: 'get', params: { video_id: videoId.value } });
     comments.value = (response.results || []).map(c => ({
-      id: c.id, username: c.user?.username || '匿名用户', userAvatar: c.user?.avatar || '',
+      id: c.id, username: c.user?.display_name || c.user?.last_name || c.user?.username || '匿名用户', userAvatar: c.user?.avatar || '',
       text: c.text, time: formatTimeAgo(c.created_at), likes: c.likes_count || 0, isLiked: false
     }));
   } catch (error) { console.error('获取评论失败:', error); }
@@ -493,8 +493,8 @@ const fetchSubtitles = async () => {
     const subtitles = response.subtitles || [];
     // 转换字幕数据
     subtitleList.value = subtitles.map((sub, index) => ({
-      start: sub.startTime || sub.start_time,
-      end: sub.endTime || sub.end_time,
+      start: sub.startTime ?? sub.start_time,
+      end: sub.endTime ?? sub.end_time,
       text: sub.text || '',
       translation: sub.translation || ''
     }));
@@ -620,7 +620,7 @@ const slideToVideo = async (direction) => {
       views: formatNumber(response.views_count), likes: formatNumber(response.likes_count),
       commentCount: response.comments_count || 0, collectCount: response.favorites_count || 0,
       publishTime: formatDate(response.published_at || response.created_at),
-      creatorName: response.user?.username || '未知用户', creatorId: response.user?.id,
+      creatorName: response.user?.display_name || response.user?.last_name || response.user?.username || '未知用户', creatorId: response.user?.id,
       creatorAvatar: response.user?.avatar || '', category: response.category,
       tags: response.tags || [], hls_file: response.hls_file, thumbnail: response.thumbnail,
       is_liked: response.is_liked, is_favorited: response.is_favorited
@@ -911,7 +911,7 @@ const addComment = async () => {
   try {
     const response = await service({ url: '/videos/comments/', method: 'post', data: { video: videoId.value, text: commentText.value } });
     comments.value.unshift({
-      id: response.id, username: userStore.userInfo?.username || '我', userAvatar: userAvatar.value,
+      id: response.id, username: userStore.displayName || '我', userAvatar: userAvatar.value,
       text: commentText.value, time: '刚刚', likes: 0, isLiked: false
     });
     videoData.value.commentCount += 1; commentText.value = ''; ElMessage.success('评论成功');

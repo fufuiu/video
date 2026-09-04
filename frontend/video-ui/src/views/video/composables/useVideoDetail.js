@@ -87,7 +87,7 @@ export function useVideoDetail(videoId) {
         commentCount: response.comments_count || 0,
         collectCount: response.favorites_count || 0,
         publishTime: formatDate(response.published_at || response.created_at),
-        creatorName: response.user?.username || '未知用户',
+        creatorName: response.user?.display_name || response.user?.last_name || response.user?.username || '未知用户',
         creatorId: response.user?.id,
         creatorAvatar: response.user?.avatar || '',
         category: response.category,

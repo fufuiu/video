@@ -29,6 +29,7 @@ class RegisterView(views.APIView):
                 'user': {
                     'id': user.id,
                     'username': user.username,
+                    'last_name': user.last_name,
                     'email': user.email,
                     'role': user.role
                 }
@@ -123,6 +124,7 @@ class LoginView(views.APIView):
             'user': {
                 'id': user.id,
                 'username': user.username,
+                'last_name': user.last_name,
                 'email': user.email,
                 'role': user.role
             }

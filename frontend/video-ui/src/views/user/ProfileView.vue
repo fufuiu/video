@@ -31,7 +31,7 @@
             </div>
           </div>
           <div class="avatar-info">
-            <h4>{{ userData.username || '未设置用户名' }}</h4>
+            <h4>{{ userData.last_name || userData.username || '未设置用户名' }}</h4>
             <p class="user-role">{{ userData.email || '未设置邮箱' }}</p>
             <el-upload
               class="avatar-uploader"
@@ -203,6 +203,7 @@ const fetchUserInfo = async () => {
     userData.gender = data.gender || 'other';
     userData.birthday = data.birthday || '';
     userData.website = data.website || '';
+    userStore.updateUserInfo(data);
   } catch (error) {
     console.error('获取用户信息失败:', error);
     ElMessage.error('获取用户信息失败，请刷新页面重试');
@@ -212,17 +213,18 @@ const fetchUserInfo = async () => {
 // 保存用户信息
 const saveUserProfile = async () => {
   try {
-    // 只发送有值的字段
-    const updateData = {};
-    
-    if (userData.last_name) updateData.last_name = userData.last_name;
-    if (userData.email) updateData.email = userData.email;
-    if (userData.bio) updateData.bio = userData.bio;
-    if (userData.gender) updateData.gender = userData.gender;
-    if (userData.birthday) updateData.birthday = userData.birthday;
-    if (userData.website) updateData.website = userData.website;
-    
-    await updateUserProfile(updateData);
+    const updateData = {
+      last_name: userData.last_name,
+      email: userData.email,
+      bio: userData.bio,
+      gender: userData.gender,
+      birthday: userData.birthday || null,
+      website: userData.website
+    };
+
+    const updatedUser = await updateUserProfile(updateData);
+    userStore.updateUserInfo(updatedUser);
+    userData.last_name = updatedUser.last_name || '';
     ElMessage.success('个人信息更新成功');
   } catch (error) {
     console.error('更新个人信息失败:', error);

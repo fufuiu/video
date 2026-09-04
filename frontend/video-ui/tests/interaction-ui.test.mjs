@@ -118,6 +118,27 @@ test('profile username is a read-only login identifier', async () => {
   assert.doesNotMatch(profile, /updateData\.username/);
 });
 
+test('profile nickname is used for the signed-in display name', async () => {
+  const profile = await read('views/user/ProfileView.vue');
+  const store = await read('store/user.js');
+  const topNav = await read('components/common/TopNav.vue');
+
+  assert.match(profile, /userData\.last_name \|\| userData\.username/);
+  assert.match(profile, /const updatedUser = await updateUserProfile\(updateData\)/);
+  assert.match(profile, /userStore\.updateUserInfo\(updatedUser\)/);
+  assert.match(store, /displayName: \(state\) => state\.userInfo\?\.display_name\?\.trim\(\) \|\| state\.userInfo\?\.last_name\?\.trim\(\) \|\| state\.username/);
+  assert.match(topNav, /userStore\.displayName/);
+});
+
+test('published subtitle playback can read saved data and preserves zero timestamps', async () => {
+  const subtitles = await read('views/video/composables/useSubtitles.js');
+  const detail = await read('views/video/detail-refactored.vue');
+
+  assert.match(subtitles, /getVideoSubtitles\(videoId\.value\)/);
+  assert.match(subtitles, /sub\.startTime \?\? sub\.start_time/);
+  assert.match(detail, /await fetchSubtitles\(\)/);
+});
+
 test('creator workshop uses the existing SVG icon library instead of emoji icons', async () => {
   const player = await read('components/creator/VideoPlayerSection.vue');
 

@@ -21,9 +21,14 @@ class TagSerializer(serializers.ModelSerializer):
 
 class UserBriefSerializer(serializers.ModelSerializer):
     """用户简略信息序列化器"""
+    display_name = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ('id', 'username', 'avatar')
+        fields = ('id', 'username', 'last_name', 'display_name', 'avatar')
+
+    def get_display_name(self, obj):
+        return (obj.last_name or '').strip() or obj.username
 
 
 class CommentSerializer(serializers.ModelSerializer):

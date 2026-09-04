@@ -136,7 +136,7 @@ const fetchCollections = async () => {
       title: item.video.title,
       thumbnail: item.video.thumbnail,
       duration: formatDuration(item.video.duration),
-      author: item.video.user.username,
+      author: item.video.user.display_name || item.video.user.last_name || item.video.user.username,
       views: formatNumber(item.video.views_count),
       publishTime: formatTimeAgo(item.video.created_at),
       collectedAt: formatDate(item.created_at),
@@ -569,4 +569,4 @@ const goToHome = () => {
     grid-template-columns: 1fr;
   }
 }
-</style> 
+</style>
